@@ -1,0 +1,19 @@
+# Python bytecode
+__pycache__/
+*.pyc
+
+# Virtual environments
+.venv/
+venv/
+
+# Test and tool caches
+.pytest_cache/
+.ruff_cache/
+
+# Editor settings
+.idea/
+.vscode/
+
+# Build output (no build step yet; kept so a future one stays clean)
+build/
+dist/
