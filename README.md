@@ -1,6 +1,6 @@
-# Maze Race
+# Maze Pathfinding Visualizer
 
-[![Tests](https://github.com/brishabkc24/maze-race/actions/workflows/tests.yml/badge.svg)](https://github.com/brishabkc24/maze-race/actions/workflows/tests.yml)
+[![Tests](https://github.com/brishabkc24/maze-pathfinding-visualizer/actions/workflows/tests.yml/badge.svg)](https://github.com/brishabkc24/maze-pathfinding-visualizer/actions/workflows/tests.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 

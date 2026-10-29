@@ -1,4 +1,4 @@
-"""Maze Race: the Tkinter app.
+"""Maze Pathfinding Visualizer: the Tkinter app.
 
 Three steps: choose a maze, choose the algorithms, press Start. Every chosen
 algorithm solves the same maze at the same time, each in its own panel and
@@ -65,7 +65,7 @@ QUICK_PICKS = (
 )
 
 HELP = (
-    ("h", "How to use Maze Race\n"),
+    ("h", "How to use the Maze Pathfinding Visualizer\n"),
     ("", "1. Choose a maze from the list, or press Make a random maze.\n"
          "2. Tick the algorithms you want to compare. The quick picks set up common comparisons.\n"
          "3. Press Start. Every algorithm moves at the same speed, one move per tick, so the "
@@ -300,7 +300,7 @@ class App:
 
     def __init__(self, root: tk.Tk):
         self.root = root
-        root.title("Maze Race")
+        root.title("Maze Pathfinding Visualizer")
         root.configure(bg=COLOR_BG)
         self.fonts = Fonts()
         self.style = ttk.Style(root)
@@ -792,7 +792,7 @@ class App:
             self.help_window.lift()
             return
         win = tk.Toplevel(self.root)
-        win.title("How Maze Race works")
+        win.title("How it works")
         win.configure(bg=COLOR_BG)
         self.help_window = win
         frame = ttk.Frame(win, padding=10)

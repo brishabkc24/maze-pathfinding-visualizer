@@ -1,4 +1,4 @@
-"""The Maze Race grid: a rectangle of open and wall cells plus a start and a goal.
+"""The maze grid: a rectangle of open and wall cells plus a start and a goal.
 
 Cells are addressed as ``(row, col)`` tuples. The model knows nothing about
 Tkinter; the editor and the pathfinding algorithms both work on it.
