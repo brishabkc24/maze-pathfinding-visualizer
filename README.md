@@ -4,49 +4,57 @@
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
 
-Watch BFS, DFS, Dijkstra, A\*, Greedy best-first and Hill Climbing race
-through the same maze side by side, each in its own colour, with a scoreboard
-that records when every one of them started and finished. A pathfinding
-visualizer written in Python with Tkinter and nothing else: no numpy, no pip
-install, just `python app.py`.
+Watch BFS, DFS, Dijkstra, A\*, Greedy best-first and Hill Climbing solve the
+same maze side by side, each in its own colour, with a scoreboard that records
+when every one of them started and finished. Made for showing search
+algorithms to a class: three numbered steps, plain words everywhere, and a
+"How it works" window that explains the rest. Python with Tkinter and nothing
+else: no numpy, no pip install, just `python app.py`.
 
-![All six algorithms after a race on the braided showcase maze](docs/race.png)
+![All six algorithms after a race on maze 21, Maze with some loops](docs/race.png)
 
-## What you can do
+## Three steps
 
-- **Pick a maze** from 26 ready-made ones, each built to make a point: an
-  open field, a door far from the straight line, a U-shaped trap, a spiral,
-  a corridor lined with dead ends, a sealed goal, perfect and braided mazes,
-  random rubble. The note under the picker says what to look for.
-- **Generate a random maze** with the braid slider: 0 % gives a perfect maze
-  with one route, so every algorithm finds the same path; more braid means
-  more loops and more ways to be wrong.
-- **Choose who races.** Tick any of BFS, DFS, Dijkstra, A\*, Greedy and Hill
-  Climbing. One panel per algorithm; fewer panels means bigger cells.
-- **Edit the maze by hand** before a race: left-drag paints walls, right-drag
-  erases, and the green start and red goal dots can be dragged.
-- **Run it your way:** Start/Pause, one Step at a time, Finish now, and a
-  speed slider. Space, Right arrow, F and Esc do the same from the keyboard.
-- **Read the scoreboard:** result, cells explored, path length, whether that
-  path was the shortest possible, start time, finish time, race time, and the
-  time spent inside the algorithm itself.
+1. **Choose a maze.** 26 numbered mazes, each built to make a point: Empty
+   room, Wall with a door at the top, The trap, Spiral, Dead ends, Big detour,
+   Sealed goal, Classic maze, Maze with some loops, Heavy rubble and more. The
+   note under the list says what to look for. Or press *Make a random maze*
+   and set how many loops it should have.
+2. **Choose the algorithms.** Tick any of the six, or use a quick pick such as
+   *BFS vs DFS* or *Dijkstra vs A\**. Each algorithm gets its own panel; fewer
+   panels means bigger cells.
+3. **Run the race.** Start, Pause, Step one move at a time, Finish now, Reset,
+   and a speed slider. Every algorithm moves the same number of steps per tick,
+   so the comparison is fair.
+
+Before a race you can draw your own walls: left-drag paints, right-drag
+erases, and the green start and red goal dots can be dragged.
+
+The scoreboard lists, for each algorithm, the result, cells checked, path
+length, whether that path was the shortest, the clock time it started and
+finished, the time taken, and the compute time spent inside the algorithm
+alone. A summary line names the shortest path, the fewest cells checked and
+the first to finish. *Big text* enlarges everything for a projector, and
+*How it works* opens a page that explains the colours, each algorithm and the
+scoreboard columns.
 
 ## What the race shows
 
-On the showcase maze (41×25, 15 % of its inner walls removed) one run gave:
+On maze 21, *Maze with some loops* (41×25, 15 % of its inner walls removed),
+one run gave:
 
-| Algorithm | Result | Cells explored | Path length | Shortest? |
+| Algorithm | Result | Cells checked | Path length | Shortest path? |
 | --- | --- | ---: | ---: | --- |
 | BFS | path found | 507 | 66 | yes |
-| DFS | path found | 142 | 130 | no (+64) |
+| DFS | path found | 142 | 130 | no, 64 longer |
 | Dijkstra | path found | 507 | 66 | yes |
 | A\* | path found | 248 | 66 | yes |
-| Greedy | path found | 81 | 70 | no (+4) |
+| Greedy | path found | 81 | 70 | no, 4 longer |
 | Hill Climbing | stuck at a local minimum | 23 | | |
 
 BFS and Dijkstra flood half the maze but are always optimal. DFS is quick and
-takes twice the path. A\* matches the BFS length while visiting half as many
-cells. Greedy visits the fewest cells and pays for it with a slightly longer
+takes twice the path. A\* matches the BFS length while checking half as many
+cells. Greedy checks the fewest cells and pays for it with a slightly longer
 path. Hill Climbing, which has no memory of where else it could go, walks
 until a wall is between it and the goal and stops there.
 

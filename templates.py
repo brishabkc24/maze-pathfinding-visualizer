@@ -1,8 +1,8 @@
 """Ready-made mazes to race on.
 
-Each template has a name, a note on what the race on it shows, and a builder
-that returns a fresh :class:`Grid` every time it is called, so edits made in
-the app never leak into the next run.
+Each template has a short name, a note in plain words on what the race on it
+shows, and a builder that returns a fresh :class:`Grid` every time it is
+called, so edits made in the app never leak into the next run.
 """
 from __future__ import annotations
 
@@ -80,11 +80,11 @@ def _block(grid: Grid, r0: int, c0: int, height: int, width: int) -> None:
 
 # -- hand-made mazes -----------------------------------------------------------------
 
-def open_field() -> Grid:
+def empty_room() -> Grid:
     return _blank()
 
 
-def clear_run() -> Grid:
+def a_few_blocks() -> Grid:
     grid = _blank()
     # Blocks off the top row and right column, the beeline hill climbing takes.
     for r0, c0 in ((5, 6), (10, 14), (16, 22), (6, 28), (18, 10), (12, 32)):
@@ -98,7 +98,7 @@ def door_at_the_top() -> Grid:
     return grid
 
 
-def bottleneck() -> Grid:
+def door_in_the_middle() -> Grid:
     grid = _blank(MID)
     _vwall(grid, 20, 1, ROWS - 2, gaps=(12,))
     return grid
@@ -110,7 +110,7 @@ def two_doors() -> Grid:
     return grid
 
 
-def u_trap() -> Grid:
+def the_trap() -> Grid:
     grid = _blank(((12, 2), (12, 30)))
     _hwall(grid, 6, 22, 36)
     _hwall(grid, 18, 22, 36)
@@ -165,7 +165,7 @@ def pillars() -> Grid:
     return grid
 
 
-def rooms_and_doors() -> Grid:
+def six_rooms() -> Grid:
     grid = _blank()
     _vwall(grid, 13, 1, ROWS - 2, gaps=(5, 19))
     _vwall(grid, 27, 1, ROWS - 2, gaps=(7, 17))
@@ -173,7 +173,7 @@ def rooms_and_doors() -> Grid:
     return grid
 
 
-def serpentine() -> Grid:
+def snake() -> Grid:
     grid = _blank(((1, 1), (23, 1)))
     for i, r in enumerate(range(2, ROWS - 1, 2)):
         gap = COLS - 2 if i % 2 == 0 else 1   # one-cell lanes, doors alternate sides
@@ -181,7 +181,7 @@ def serpentine() -> Grid:
     return grid
 
 
-def dfs_trap() -> Grid:
+def dead_ends() -> Grid:
     grid = _filled(MID)
     _carve_h(grid, 12, 1, COLS - 2)
     for c in range(3, COLS - 2, 2):
@@ -189,7 +189,7 @@ def dfs_trap() -> Grid:
     return grid
 
 
-def diagonal_barrier() -> Grid:
+def diagonal_wall() -> Grid:
     grid = _blank()
     for i in range(ROWS):
         if i in (4, 20):
@@ -199,28 +199,28 @@ def diagonal_barrier() -> Grid:
     return grid
 
 
-def long_way_around() -> Grid:
+def big_detour() -> Grid:
     grid = _blank(MID)
     _vwall(grid, 12, 1, ROWS - 3)          # gap at the bottom
     _vwall(grid, 28, 2, ROWS - 2)          # gap at the top
     return grid
 
 
-def cross() -> Grid:
+def plus_sign() -> Grid:
     grid = _blank(MID)
     _vwall(grid, 20, 4, 20)
     _hwall(grid, 12, 8, 32)
     return grid
 
 
-def no_exit() -> Grid:
+def sealed_goal() -> Grid:
     grid = _blank()
     for r, c in ((22, 38), (22, 39), (23, 38)):
         grid.set_wall(r, c)
     return grid
 
 
-def islands(seed: int = 11) -> Grid:
+def random_blocks(seed: int = 11) -> Grid:
     for attempt in range(100):
         rng = random.Random(seed * 10_000 + attempt)
         grid = _blank()
@@ -231,89 +231,89 @@ def islands(seed: int = 11) -> Grid:
             _block(grid, r0, c0, height, width)
         if grid.goal in grid.reachable_from(grid.start):
             return grid
-    raise RuntimeError("could not build a solvable islands maze")
+    raise RuntimeError("could not build a solvable random-blocks maze")
 
 
 # -- the catalogue -------------------------------------------------------------------
 
 TEMPLATES: list[Template] = [
-    Template("Open field",
-             "No walls. Every algorithm finds a 60-step path; the difference is how many cells each one touches.",
-             open_field),
-    Template("Clear run",
-             "A few blocks off the direct route. The beeline of hill climbing works here; on most mazes it will not.",
-             clear_run),
-    Template("Door at the top",
-             "The only way through is far from the straight line. Greedy and hill climbing head straight into the wall.",
+    Template("Empty room",
+             "No walls at all. Everyone finds a 60-step path. Compare how many cells each one checks to get there.",
+             empty_room),
+    Template("A few blocks",
+             "Some blocks, but nothing on the straight route. Even hill climbing gets through here.",
+             a_few_blocks),
+    Template("Wall with a door at the top",
+             "The only door is far from the straight line. Greedy and hill climbing run straight into the wall.",
              door_at_the_top),
-    Template("Bottleneck",
-             "Two halls joined by one cell. BFS and Dijkstra fill the first hall; A* aims for the gap.",
-             bottleneck),
-    Template("Two doors",
-             "Two equally long routes. Tie-breaking decides which door each algorithm takes; hill climbing takes neither.",
+    Template("Wall with a door in the middle",
+             "One door, right on the straight line. BFS and Dijkstra fill the whole left half before they find it.",
+             door_in_the_middle),
+    Template("Wall with two doors",
+             "Two doors, both giving the same path length. Watch which door each algorithm picks.",
              two_doors),
-    Template("U trap",
-             "The goal sits in a cup that opens away from the start. Greedy and hill climbing walk straight into it.",
-             u_trap),
+    Template("The trap",
+             "The goal sits inside a cup that opens on the far side. Greedy and hill climbing walk straight into it.",
+             the_trap),
     Template("Spiral",
-             "One long corridor and no choices: every algorithm walks the same path, so they all tie.",
+             "One long corridor with no choices. Every algorithm walks the same path, so they all tie.",
              spiral),
     Template("Rings",
-             "Concentric walls with doors on alternating sides: a long forced route with many near misses for greedy.",
+             "Walls in rings, each with one door, on alternating sides. A long route with lots of near misses.",
              rings),
     Template("Pillars",
-             "Hundreds of equally short routes. See how each algorithm breaks ties.",
+             "Hundreds of shortest paths, all the same length. See how each algorithm chooses between them.",
              pillars),
-    Template("Rooms and doors",
-             "Six rooms, seven doors. A* and Dijkstra agree on the length; DFS wanders through extra rooms.",
-             rooms_and_doors),
-    Template("Serpentine",
-             "Twelve one-cell lanes joined end to end: a forced route of 460 steps. Everyone ties, and it takes a while.",
-             serpentine),
-    Template("DFS trap",
-             "A straight corridor lined with dead-end teeth. DFS tries every tooth going up before it moves on.",
-             dfs_trap),
-    Template("Diagonal barrier",
+    Template("Six rooms",
+             "Rooms joined by doors. DFS wanders through extra rooms; A* goes from door to door.",
+             six_rooms),
+    Template("Snake",
+             "Twelve lanes joined end to end: one forced route of 460 steps. Everyone ties, and it takes a while.",
+             snake),
+    Template("Dead ends",
+             "A straight corridor with dead ends on both sides. DFS tries every dead end going up before it moves on.",
+             dead_ends),
+    Template("Diagonal wall",
              "A thick diagonal wall with two gaps. The shortest route and the greedy route disagree.",
-             diagonal_barrier),
-    Template("Long way around",
-             "The direct route is blocked both ways and the real path heads away from the goal twice.",
-             long_way_around),
-    Template("Cross",
-             "A plus-shaped wall between start and goal. Hill climbing stops at the first arm.",
-             cross),
-    Template("No exit",
-             "The goal is sealed off. Complete algorithms explore every cell before giving up; hill climbing quits at once.",
-             no_exit, solvable=False),
-    Template("Islands",
-             "Random rectangular blocks. A good general-purpose race.",
-             islands),
-    Template("Perfect maze 1",
-             "A perfect maze has one route between any two cells, so the paths tie; only the explored counts differ.",
+             diagonal_wall),
+    Template("Big detour",
+             "The straight route is blocked twice. The real path moves away from the goal, which greedy hates.",
+             big_detour),
+    Template("Plus sign",
+             "A plus-shaped wall in the middle. Hill climbing stops at the first arm it meets.",
+             plus_sign),
+    Template("Sealed goal",
+             "There is no way in. The complete algorithms check every cell before giving up; hill climbing gives up at once.",
+             sealed_goal, solvable=False),
+    Template("Random blocks",
+             "Random rectangles. A good all-round race.",
+             random_blocks),
+    Template("Classic maze A",
+             "A proper maze with exactly one route between any two cells. The paths tie; only the cells checked differ.",
              lambda: generate(seed=1)),
-    Template("Perfect maze 2",
-             "Another perfect maze. Watch DFS get lucky or unlucky depending on which corridor it dives into first.",
+    Template("Classic maze B",
+             "Another classic maze. DFS gets lucky or unlucky depending on which corridor it tries first.",
              lambda: generate(seed=2)),
-    Template("Braided maze 10%",
-             "A perfect maze with 10% of its inner walls removed: a few loops, a few shortcuts.",
+    Template("Maze with a few loops",
+             "A classic maze with 10% of its inner walls removed, so there are a few shortcuts.",
              lambda: generate(seed=3, braid_fraction=0.10)),
-    Template("Braided maze 15%",
-             "The showcase: BFS floods, DFS takes a longer path, A* matches the BFS length with far fewer cells.",
+    Template("Maze with some loops",
+             "The showcase: BFS floods, DFS takes a long path, A* finds the shortest with far fewer cells checked.",
              lambda: generate(seed=4, braid_fraction=0.15)),
-    Template("Braided maze 25%",
-             "More loops: DFS gets more creative and the lead of A* over Dijkstra grows.",
+    Template("Maze with many loops",
+             "More loops: DFS gets more creative and A* pulls further ahead of Dijkstra.",
              lambda: generate(seed=5, braid_fraction=0.25)),
-    Template("Braided maze 40%",
-             "Nearly a field of pillars: lots of equal routes, little for the heuristic to get wrong.",
+    Template("Maze with lots of loops",
+             "Almost a field of pillars: lots of equal routes, little for the heuristic to get wrong.",
              lambda: generate(seed=6, braid_fraction=0.40)),
-    Template("Rubble 10%",
-             "Random obstacles at 10% density: almost open, with just enough in the way to split the pack.",
+    Template("Light rubble",
+             "Random rocks covering 10% of the floor: almost open, with just enough in the way to split the pack.",
              lambda: scatter(density=0.10, seed=7)),
-    Template("Rubble 20%",
-             "Random obstacles at 20% density.",
+    Template("Medium rubble",
+             "Random rocks covering 20% of the floor.",
              lambda: scatter(density=0.20, seed=8)),
-    Template("Rubble 30%",
-             "Random obstacles at 30% density: narrow passages everywhere, and traps for the greedy approaches.",
+    Template("Heavy rubble",
+             "Random rocks covering 30% of the floor: narrow passages everywhere, and traps for the greedy ones.",
              lambda: scatter(density=0.30, seed=9)),
 ]
 
