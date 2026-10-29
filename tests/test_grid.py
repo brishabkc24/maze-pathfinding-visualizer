@@ -116,3 +116,14 @@ def test_copy_is_independent_and_equality_compares_contents():
     clone.clear_wall(0, 4)
     assert clone == g
     assert g.cells[2][2] == WALL
+
+
+def test_reachable_from_floods_only_through_open_cells():
+    g = Grid.from_rows([
+        "S.#..",
+        "..#.G",
+        "#####",
+    ])
+    assert g.reachable_from(g.start) == {(0, 0), (0, 1), (1, 0), (1, 1)}
+    assert g.goal not in g.reachable_from(g.start)
+    assert g.reachable_from((2, 2)) == set()      # a wall reaches nothing

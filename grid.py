@@ -102,6 +102,19 @@ class Grid:
     def wall_count(self) -> int:
         return sum(row.count(WALL) for row in self.cells)
 
+    def reachable_from(self, node: Node) -> set[Node]:
+        """Every open cell connected to ``node`` through open cells (flood fill)."""
+        if not self.is_open(*node):
+            return set()
+        seen = {node}
+        stack = [node]
+        while stack:
+            for nb in self.neighbors(stack.pop()):
+                if nb not in seen:
+                    seen.add(nb)
+                    stack.append(nb)
+        return seen
+
     # -- edits (each returns True when something changed) ---------------------
 
     def set_wall(self, r: int, c: int) -> bool:
