@@ -5,13 +5,16 @@ A :class:`Race` holds one :class:`Runner` per chosen algorithm. Each call to
 events, so the panels stay synchronized, and records for each runner what it
 explored, the path it found, when it started and finished, and how much time
 it spent inside the algorithm itself.
+
+The race has one clock, started by :meth:`Race.start` and frozen by
+:meth:`Race.pause`, so time spent paused never counts as time taken.
 """
 from __future__ import annotations
 
 import time
 from dataclasses import dataclass, field
 from datetime import datetime
-from typing import Iterator
+from typing import Callable, Iterator
 
 from algorithms import ALGORITHMS, Event, bfs, run
 from grid import Grid, Node
@@ -22,16 +25,16 @@ class Runner:
     name: str
     color: str
     gen: Iterator[Event]
+    clock: Callable[[], float] = lambda: 0.0     # the race clock, set by Race
     explored: set[Node] = field(default_factory=set)
     frontier: set[Node] = field(default_factory=set)
     path: list[Node] | None = None
     done: bool = False
     steps: int = 0
     compute_seconds: float = 0.0
+    race_seconds: float | None = None            # race clock when it finished
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    _start_perf: float = 0.0
-    _end_perf: float | None = None
 
     def apply(self, event: Event) -> None:
         kind, payload = event
@@ -45,7 +48,7 @@ class Runner:
             self.done = True
             self.path = payload  # type: ignore[assignment]
             self.finished_at = datetime.now()
-            self._end_perf = time.perf_counter()
+            self.race_seconds = self.clock()
 
     @property
     def found(self) -> bool:
@@ -57,11 +60,11 @@ class Runner:
         return None if self.path is None else len(self.path) - 1
 
     def elapsed(self) -> float:
-        """Wall-clock seconds from the race start to the finish (or to now)."""
-        if self.started_at is None:
-            return 0.0
-        end = self._end_perf if self._end_perf is not None else time.perf_counter()
-        return end - self._start_perf
+        """Race-clock seconds from Start to this runner's finish, or to now.
+        Time spent paused does not count."""
+        if self.race_seconds is not None:
+            return self.race_seconds
+        return self.clock()
 
     @property
     def status(self) -> str:
@@ -76,22 +79,50 @@ class Race:
     def __init__(self, grid: Grid, entries: list[tuple[str, str]]):
         """``entries`` pairs an algorithm name from :data:`ALGORITHMS` with a colour."""
         self.grid = grid
-        self.runners = [Runner(name, color, ALGORITHMS[name](grid)) for name, color in entries]
+        self.runners = [Runner(name, color, ALGORITHMS[name](grid), self.clock)
+                        for name, color in entries]
         optimal, _ = run(bfs, grid)
         self.optimal_length: int | None = None if optimal is None else len(optimal) - 1
         self.started_at: datetime | None = None
+        self._start_perf: float | None = None
+        self._paused_at: float | None = None
+        self._paused_total = 0.0
+
+    # -- the clock ----------------------------------------------------------------------
 
     def start(self) -> None:
         self.started_at = datetime.now()
-        perf = time.perf_counter()
+        self._start_perf = time.perf_counter()
         for runner in self.runners:
             runner.started_at = self.started_at
-            runner._start_perf = perf
+
+    @property
+    def paused(self) -> bool:
+        return self._paused_at is not None
+
+    def pause(self) -> None:
+        """Freeze the race clock. Steps taken while paused cost no race time."""
+        if self._start_perf is not None and self._paused_at is None:
+            self._paused_at = time.perf_counter()
+
+    def resume(self) -> None:
+        if self._paused_at is not None:
+            self._paused_total += time.perf_counter() - self._paused_at
+            self._paused_at = None
+
+    def clock(self) -> float:
+        """Seconds of race time so far: since Start, minus every pause."""
+        if self._start_perf is None:
+            return 0.0
+        now = self._paused_at if self._paused_at is not None else time.perf_counter()
+        return now - self._start_perf - self._paused_total
+
+    # -- running ---------------------------------------------------------------------------
 
     def step(self, k: int = 1) -> list[tuple[Runner, Event]]:
         """Advance each unfinished runner by up to ``k`` events.
 
-        Starts the clocks on the first call. Returns the events in the order
+        Starts the clock on the first call. Returns the events in the order
         they happened so a view can paint them.
         """
         if self.started_at is None:

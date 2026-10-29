@@ -1,3 +1,5 @@
+import time
+
 from algorithms import ALGORITHMS, run
 from maze_gen import generate
 from race import Race
@@ -51,6 +53,24 @@ def test_optimality_is_judged_against_bfs():
     assert race.is_optimal(by_name["Dijkstra"]) is True
     hill = by_name["Hill Climbing"]
     assert race.is_optimal(hill) is None if hill.path is None else race.is_optimal(hill) is not None
+
+
+def test_pausing_freezes_the_race_clock():
+    race = Race(generate(seed=3), ENTRIES[:2])
+    assert race.clock() == 0.0
+    race.step(5)
+    race.pause()
+    frozen = race.clock()
+    time.sleep(0.03)
+    assert race.clock() == frozen
+    assert race.runners[0].elapsed() == frozen
+    race.step(5)                              # stepping while paused costs no race time
+    assert race.clock() == frozen
+    race.resume()
+    time.sleep(0.01)
+    assert race.clock() > frozen
+    race.run_to_completion()
+    assert all(frozen <= r.elapsed() <= race.clock() for r in race.runners)
 
 
 def test_finished_runners_are_left_alone():

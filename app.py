@@ -100,7 +100,8 @@ HELP = (
     ("Hill Climbing", "Hill climbing.  "),
     ("", "No queue at all. From the current cell, step to the neighbour closest to the goal; "
          "if no neighbour is closer, stop. It keeps no memory of other options, so one wall in "
-         "the way leaves it stuck at a local minimum. That is why search needs a frontier.\n"),
+         "the way leaves it stuck at a local minimum. That is why search needs a frontier. "
+         "The cells it looks at are shown in the frontier colour, but it never returns to them.\n"),
     ("h", "The scoreboard\n"),
     ("", "Cells checked: how many cells the algorithm expanded.  Path length: steps from start "
          "to goal.  Shortest path?: compared with the BFS path.  Started at and Finished at: "
@@ -320,12 +321,14 @@ class App:
         self.panel_by_name: dict[str, Panel] = {}
         self.drag: str | None = None
         self.help_window: tk.Toplevel | None = None
+        self._laid_out_size = (0, 0)      # window size the panels were last built for
+        self._relayout_id: str | None = None
 
         self.note_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Ready. Choose a maze and press Start.")
         self.summary_var = tk.StringVar(value="")
         self.selected = {name: tk.BooleanVar(value=True) for name in ALGORITHMS}
-        self.speed = tk.IntVar(value=12)
+        self.speed = tk.IntVar(value=4)
         self.braid = tk.IntVar(value=15)
         self.big_text = tk.BooleanVar(value=False)
 
@@ -349,6 +352,7 @@ class App:
         root.bind("<Key-f>", lambda _e: self.finish_now())
         root.bind("<Escape>", lambda _e: self.reset())
         root.bind("<F1>", lambda _e: self.show_help())
+        root.bind("<Configure>", self._on_configure)
 
     # -- looks -------------------------------------------------------------------------
 
@@ -367,8 +371,7 @@ class App:
     def toggle_big_text(self) -> None:
         self.fonts.scale(1.35 if self.big_text.get() else 1.0)
         self._apply_style()
-        if self.race is None:
-            self.rebuild_panels()
+        self.rebuild_panels()
 
     # -- building the window ---------------------------------------------------------
 
@@ -384,7 +387,7 @@ class App:
         tk.Label(parent, text=title, bg=COLOR_BG, fg=COLOR_TEXT, font=self.fonts.body,
                  anchor="w").pack(fill="x", pady=(8, 0))
         tk.Scale(parent, from_=lo, to=hi, orient="horizontal", variable=var,
-                 showvalue=False, bg=COLOR_BG, highlightthickness=0,
+                 showvalue=False, bg=COLOR_BG, highlightthickness=0, takefocus=0,
                  troughcolor=COLOR_TROUGH, sliderlength=18, bd=1).pack(fill="x")
         ends = tk.Frame(parent, bg=COLOR_BG)
         ends.pack(fill="x")
@@ -395,14 +398,17 @@ class App:
 
     def _build_sidebar(self) -> None:
         maze = self._heading("1   Choose a maze")
-        self.picker = ttk.Combobox(maze, state="readonly", font=self.fonts.body,
+        # No widget keeps keyboard focus, so Space, the arrows, F and Esc always
+        # mean the race shortcuts and never a focused button or slider.
+        self.picker = ttk.Combobox(maze, state="readonly", font=self.fonts.body, takefocus=False,
                                    values=[f"{i + 1}.  {t.name}" for i, t in enumerate(TEMPLATES)])
         self.picker.pack(fill="x")
         self.picker.bind("<<ComboboxSelected>>", self.load_template)
         tk.Label(maze, textvariable=self.note_var, wraplength=SIDEBAR_WIDTH - 12,
                  justify="left", anchor="nw", bg=COLOR_BG, fg=COLOR_MUTED,
                  font=self.fonts.small, height=3).pack(fill="x", pady=(4, 2))
-        ttk.Button(maze, text="Make a random maze", command=self.generate_random).pack(fill="x")
+        ttk.Button(maze, text="Make a random maze", command=self.generate_random,
+                   takefocus=False).pack(fill="x")
         self._slider(maze, "Loops in the random maze", self.braid, 0, 60, "none", "many")
 
         algos = self._heading("2   Choose the algorithms")
@@ -411,26 +417,26 @@ class App:
             row.pack(fill="x", pady=1)
             tk.Label(row, bg=ALGO_COLORS[name], width=2).pack(side="left", padx=(2, 8))
             ttk.Checkbutton(row, text=name, variable=self.selected[name],
-                            command=self.on_selection_change).pack(side="left")
+                            command=self.on_selection_change, takefocus=False).pack(side="left")
         picks = ttk.Frame(algos)
         picks.pack(fill="x", pady=(6, 0))
         picks.columnconfigure((0, 1), weight=1)
         for i, (label, names) in enumerate(QUICK_PICKS):
-            ttk.Button(picks, text=label, command=lambda n=names: self.pick(n)).grid(
-                row=i // 2, column=i % 2, sticky="ew", padx=1, pady=1)
+            ttk.Button(picks, text=label, command=lambda n=names: self.pick(n),
+                       takefocus=False).grid(row=i // 2, column=i % 2, sticky="ew", padx=1, pady=1)
 
         race = self._heading("3   Run the race")
         buttons = ttk.Frame(race)
         buttons.pack(fill="x")
         buttons.columnconfigure((0, 1), weight=1)
         self.run_button = ttk.Button(buttons, text="▶  Start", style="Accent.TButton",
-                                     command=self.toggle_run)
+                                     command=self.toggle_run, takefocus=False)
         self.run_button.grid(row=0, column=0, sticky="ew", padx=1, pady=1)
-        ttk.Button(buttons, text="Reset", command=self.reset).grid(
+        ttk.Button(buttons, text="Reset", command=self.reset, takefocus=False).grid(
             row=0, column=1, sticky="ew", padx=1, pady=1)
-        ttk.Button(buttons, text="Step", command=self.step_once).grid(
+        ttk.Button(buttons, text="Step", command=self.step_once, takefocus=False).grid(
             row=1, column=0, sticky="ew", padx=1, pady=1)
-        ttk.Button(buttons, text="Finish", command=self.finish_now).grid(
+        ttk.Button(buttons, text="Finish", command=self.finish_now, takefocus=False).grid(
             row=1, column=1, sticky="ew", padx=1, pady=1)
         self._slider(race, "Speed", self.speed, 1, 60, "slow", "fast")
 
@@ -441,9 +447,10 @@ class App:
                  font=self.fonts.body, height=2).pack(side="bottom", fill="x", pady=(6, 0))
         tools = ttk.Frame(bottom)
         tools.pack(side="bottom", fill="x", pady=(8, 0))
-        ttk.Button(tools, text="How it works", command=self.show_help).pack(side="left")
+        ttk.Button(tools, text="How it works", command=self.show_help,
+                   takefocus=False).pack(side="left")
         ttk.Checkbutton(tools, text="Big text", variable=self.big_text,
-                        command=self.toggle_big_text).pack(side="right")
+                        command=self.toggle_big_text, takefocus=False).pack(side="right")
         tk.Label(bottom, text="Draw your own maze before a race: left-drag paints walls, "
                               "right-drag erases, drag the green and red dots.",
                  wraplength=SIDEBAR_WIDTH - 12, justify="left", anchor="nw", bg=COLOR_BG,
@@ -507,6 +514,8 @@ class App:
         return columns, max(4, cell), compact
 
     def rebuild_panels(self) -> None:
+        """Create the panels for the ticked algorithms from scratch, sized for
+        the window as it is now. A race in progress is painted back into them."""
         for widget in self.panel_area.winfo_children():
             widget.destroy()
         self.panels = []
@@ -516,8 +525,8 @@ class App:
             tk.Label(self.panel_area, text="Tick at least one algorithm in step 2.",
                      bg=COLOR_BG, fg=COLOR_MUTED, font=self.fonts.title).pack(pady=60)
         columns, cell, compact = self._layout(len(names))
-        for col in range(columns):
-            self.panel_area.columnconfigure(col, weight=1)
+        for col in range(3):
+            self.panel_area.columnconfigure(col, weight=1 if col < columns else 0)
         for i, name in enumerate(names):
             panel = Panel(self.panel_area, self.grid, name, ALGO_COLORS[name], cell,
                           self.fonts, compact)
@@ -525,7 +534,29 @@ class App:
             self._bind_editing(panel.canvas)
             self.panels.append(panel)
             self.panel_by_name[name] = panel
-        self._reset_scoreboard(names)
+        self._laid_out_size = (self.root.winfo_width(), self.root.winfo_height())
+        race = self.race
+        if race is not None and [r.name for r in race.runners] == names:
+            for runner in race.runners:
+                self.panel_by_name[runner.name].render(runner)
+            self.refresh_stats()
+        else:
+            self._reset_scoreboard(names)
+
+    def _on_configure(self, event: tk.Event) -> None:
+        """Re-size the panels when the window itself changes size."""
+        if event.widget is not self.root:
+            return
+        if (event.width, event.height) == self._laid_out_size:
+            return
+        if self._relayout_id is not None:
+            self.root.after_cancel(self._relayout_id)
+        self._relayout_id = self.root.after(200, self._relayout)
+
+    def _relayout(self) -> None:
+        self._relayout_id = None
+        if (self.root.winfo_width(), self.root.winfo_height()) != self._laid_out_size:
+            self.rebuild_panels()
 
     def _reset_scoreboard(self, names: list[str]) -> None:
         self.board.delete(*self.board.get_children())
@@ -551,6 +582,7 @@ class App:
         self.grid = template.build()
         self.note_var.set(template.note)
         self._new_grid()
+        self.root.focus_set()
 
     def generate_random(self) -> None:
         seed = random.randrange(1, 1_000_000)
@@ -655,7 +687,8 @@ class App:
         if race is None or race.finished:
             return
         if race.started_at is None:
-            race.start()          # the clocks start when Start is pressed
+            race.start()          # the clock starts when Start is pressed
+        race.resume()             # and runs again after a pause
         self.running = True
         self.run_button.config(text="❙❙  Pause")
         self.set_status("Racing. Space pauses, Right arrow steps.")
@@ -666,6 +699,8 @@ class App:
         if self.after_id is not None:
             self.root.after_cancel(self.after_id)
             self.after_id = None
+        if self.race is not None:
+            self.race.pause()     # paused time is not time taken
         if self.race is not None and not self.race.finished and self.race.started_at:
             self.run_button.config(text="▶  Resume")
             self.set_status("Paused. Right arrow steps one move at a time.")
@@ -726,8 +761,8 @@ class App:
             parts.append(f"Shortest path, {best} steps: {names}")
             fewest = min(found, key=lambda r: len(r.explored))
             parts.append(f"Fewest cells checked: {fewest.name} ({len(fewest.explored)})")
-            first = min(found, key=lambda r: r.finished_at)
-            parts.append(f"First to finish: {first.name}")
+            first = min(found, key=lambda r: r.steps)   # fewest moves in lockstep
+            parts.append(f"First to finish: {first.name} ({first.steps} moves)")
         failed = [r.name for r in race.runners if not r.found]
         if failed:
             parts.append("No path found by " + ", ".join(failed))
