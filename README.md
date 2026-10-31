@@ -28,8 +28,9 @@ else: no numpy, no pip install, just `python app.py`.
    All three keep A\* on the shortest path; Manhattan is the closest guess on
    a grid, so A\* checks the fewest cells with it.
 3. **Run the race.** Start, Pause, Step one move at a time, Finish now, Reset,
-   and a speed slider. Every algorithm moves the same number of steps per tick,
-   so the comparison is fair.
+   and a speed slider. Every algorithm makes the same number of moves per tick,
+   where a move is one look at one cell, either finding it or checking it, so
+   the comparison is fair.
 
 Before a race you can draw your own walls: left-drag paints, right-drag
 erases, and the green start and red goal dots can be dragged.
@@ -97,7 +98,8 @@ and pushing a tag such as `v1.1` publishes a release with the exe attached.
   on distance-so-far and the heuristic. Hill Climbing is steepest ascent with
   no backtracking, which is why it can get stuck.
 - `race.py` advances every chosen generator by the same number of events per
-  tick, so the panels stay in lockstep, and records for each one the cells
+  tick (one event, a cell found or a cell checked, is what the app calls a
+  move), so the panels stay in lockstep, and records for each one the cells
   explored, the path, the clock times it started and finished, and the time
   spent inside the generator.
 - `maze_gen.py` carves a perfect maze by recursive backtracking and then

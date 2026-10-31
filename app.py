@@ -69,9 +69,12 @@ HELP = (
     ("h", "How to use the Maze Pathfinding Visualizer\n"),
     ("", "1. Choose a maze from the list, or press Make a random maze.\n"
          "2. Tick the algorithms you want to compare. The quick picks set up common comparisons.\n"
-         "3. Press Start. Every algorithm moves at the same speed, one move per tick, so the "
-         "comparison is fair. Step moves everyone one move; Finish jumps to the end; Reset "
-         "clears the panels so you can run again.\n"
+         "3. Press Start. Every algorithm makes the same number of moves per tick, so the "
+         "comparison is fair. A move is one look at one cell: finding a new cell (adding it to "
+         "the frontier) or checking one (taking it off). An algorithm that finds four "
+         "neighbours at once therefore spends more moves on a cell than Hill Climbing, which "
+         "looks at a few and keeps none. Step moves everyone one move; Finish jumps to the "
+         "end; Reset clears the panels so you can run again.\n"
          "Before a race you can draw your own walls: left-drag paints, right-drag erases, and "
          "the green and red dots can be dragged to new cells.\n"),
     ("h", "What the colours mean\n"),
