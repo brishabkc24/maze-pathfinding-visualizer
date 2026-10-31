@@ -55,6 +55,11 @@ jobs:
     permissions:
       contents: write
     steps:
+      - uses: actions/checkout@v4
+      - name: Fetch the annotated tag, whose message becomes the release notes
+        # checkout leaves a lightweight tag pointing at the commit; fetching the
+        # real tag object brings its message back for --notes-from-tag.
+        run: git fetch --force origin "refs/tags/$GITHUB_REF_NAME:refs/tags/$GITHUB_REF_NAME"
       - name: Download the built executable
         uses: actions/download-artifact@v4
         with:
@@ -67,4 +72,4 @@ jobs:
           gh release create "$GITHUB_REF_NAME" dist/MazePathfindingVisualizer.exe
           --repo "$GITHUB_REPOSITORY"
           --title "Maze Pathfinding Visualizer $GITHUB_REF_NAME"
-          --generate-notes
+          --notes-from-tag

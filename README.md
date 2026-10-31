@@ -85,7 +85,9 @@ python app.py
 `pip install -r requirements-build.txt`, then run
 `python -m PyInstaller MazePathfindingVisualizer.spec --noconfirm --clean`;
 the file appears in `dist/`. GitHub Actions runs the same build on every push,
-and pushing a tag such as `v1.1` publishes a release with the exe attached.
+and pushing an annotated tag such as `v1.2` publishes a release with the exe
+attached and the tag's message as the release notes, so write the notes in the
+tag: `git tag -a v1.2 -m "..."`.
 
 ## How it works
 
