@@ -17,7 +17,7 @@ import tkinter.font as tkfont
 from datetime import datetime
 from tkinter import ttk
 
-from algorithms import ALGORITHMS
+from algorithms import ALGORITHMS, HEURISTICS
 from grid import Grid, Node
 from maze_gen import generate
 from race import Race, Runner
@@ -92,8 +92,8 @@ HELP = (
          "In a maze where every step costs the same it checks the same cells as BFS.\n"),
     ("A*", "A*.  "),
     ("", "Priority queue ordered by distance from the start plus a guess of the distance to "
-         "the goal (here the Manhattan distance: rows plus columns). The guess never "
-         "overestimates, so the path is still the shortest, and far fewer cells are checked.\n"),
+         "the goal (the guess chosen in step 2). The guess never overestimates, so the path "
+         "is still the shortest, and far fewer cells are checked.\n"),
     ("Greedy", "Greedy best-first.  "),
     ("", "Priority queue ordered by the guess to the goal only. Very quick, but the path can "
          "be longer, and a wall between it and the goal fools it for a while.\n"),
@@ -102,6 +102,16 @@ HELP = (
          "if no neighbour is closer, stop. It keeps no memory of other options, so one wall in "
          "the way leaves it stuck at a local minimum. That is why search needs a frontier. "
          "The cells it looks at are shown in the frontier colour, but it never returns to them.\n"),
+    ("h", "The guess to the goal\n"),
+    ("", "A*, Greedy and Hill Climbing need a guess of how far a cell is from the goal, and "
+         "the box in step 2 chooses it. Manhattan counts rows plus columns, which is the exact "
+         "distance when no walls are in the way. Euclidean is the straight-line distance. "
+         "Chebyshev is the larger of the rows and the columns. None of them ever overestimates, "
+         "so A* finds the shortest path with any of them, but Manhattan is the closest guess on "
+         "this grid, so A* checks the fewest cells with it. Try one maze with each guess: Greedy "
+         "takes different routes, and with Chebyshev even the empty room stops Hill Climbing, "
+         "because a step that shortens only the smaller of the two distances does not count as "
+         "closer.\n"),
     ("h", "The scoreboard\n"),
     ("", "Cells checked: how many cells the algorithm expanded.  Path length: steps from start "
          "to goal.  Shortest path?: compared with the BFS path.  Started at and Finished at: "
@@ -331,6 +341,7 @@ class App:
         self.speed = tk.IntVar(value=4)
         self.braid = tk.IntVar(value=15)
         self.big_text = tk.BooleanVar(value=False)
+        self.heuristic = tk.StringVar(value="Manhattan")
 
         outer = ttk.Frame(root, padding=10)
         outer.pack(fill="both", expand=True)
@@ -424,6 +435,17 @@ class App:
         for i, (label, names) in enumerate(QUICK_PICKS):
             ttk.Button(picks, text=label, command=lambda n=names: self.pick(n),
                        takefocus=False).grid(row=i // 2, column=i % 2, sticky="ew", padx=1, pady=1)
+        guess = ttk.Frame(algos)
+        guess.pack(fill="x", pady=(8, 0))
+        tk.Label(guess, text="Guess to the goal", bg=COLOR_BG, fg=COLOR_TEXT,
+                 font=self.fonts.body).pack(side="left")
+        self.heuristic_box = ttk.Combobox(guess, state="readonly", font=self.fonts.body,
+                                          takefocus=False, width=11, values=list(HEURISTICS),
+                                          textvariable=self.heuristic)
+        self.heuristic_box.pack(side="right")
+        self.heuristic_box.bind("<<ComboboxSelected>>", self.on_heuristic_change)
+        tk.Label(algos, text="used by A*, Greedy and Hill Climbing", bg=COLOR_BG,
+                 fg=COLOR_MUTED, font=self.fonts.small, anchor="w").pack(fill="x")
 
         race = self._heading("3   Run the race")
         buttons = ttk.Frame(race)
@@ -606,6 +628,13 @@ class App:
         count = len(self.panels)
         self.set_status(f"{count} algorithm{'s' if count != 1 else ''} in the race. Press Start.")
 
+    def on_heuristic_change(self, _event=None) -> None:
+        """A new guess means a new race: the informed algorithms would behave differently."""
+        self.reset()
+        self.set_status(f"{self.heuristic.get()} guess for A*, Greedy and Hill Climbing. "
+                        "Press Start.")
+        self.root.focus_set()
+
     # -- editing the shared maze -------------------------------------------------------
 
     def _bind_editing(self, canvas: GridCanvas) -> None:
@@ -673,7 +702,8 @@ class App:
             if not self.panels:
                 self.set_status("Tick at least one algorithm in step 2.")
                 return None
-            self.race = Race(self.grid, [(p.name, p.color) for p in self.panels])
+            self.race = Race(self.grid, [(p.name, p.color) for p in self.panels],
+                             HEURISTICS[self.heuristic.get()])
         return self.race
 
     def toggle_run(self) -> None:

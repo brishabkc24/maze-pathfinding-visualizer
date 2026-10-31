@@ -22,7 +22,7 @@ from grid import Grid, Node
 
 Event = tuple[str, object]
 Heuristic = Callable[[Node, Node], float]
-Algorithm = Callable[[Grid], Iterator[Event]]
+Algorithm = Callable[..., Iterator[Event]]     # (grid) or (grid, heuristic)
 
 
 # -- heuristics -----------------------------------------------------------------
@@ -154,6 +154,8 @@ def dijkstra(grid: Grid, heuristic: Heuristic = manhattan) -> Iterator[Event]:
     """Uniform-cost search: expands by distance from the start only. On a grid
     with unit costs it explores the same cells as BFS, just in a different
     order, and is always optimal."""
+    # The heuristic is accepted so that every informed algorithm has the same
+    # signature; with no weight on it, it is never consulted.
     return _best_first(grid, 1, 0, heuristic)
 
 
@@ -209,6 +211,23 @@ ALGORITHMS: dict[str, Algorithm] = {
     "Greedy": greedy,
     "Hill Climbing": hill_climbing,
 }
+
+# The algorithms that take a heuristic. Dijkstra is listed only because it
+# shares the signature; BFS and DFS have no use for a guess at all.
+INFORMED: frozenset[str] = frozenset({"Dijkstra", "A*", "Greedy", "Hill Climbing"})
+
+
+def create(name: str, grid: Grid, heuristic: Heuristic = manhattan) -> Iterator[Event]:
+    """The event generator of the algorithm called ``name`` on ``grid``.
+
+    The informed algorithms are given ``heuristic``, which is how the app's
+    "Guess to the goal" choice reaches them; BFS and DFS are not.
+    """
+    algorithm = ALGORITHMS[name]
+    if name in INFORMED:
+        return algorithm(grid, heuristic)
+    return algorithm(grid)
+
 
 DESCRIPTIONS: dict[str, str] = {
     "BFS": "Queue. Floods outward in rings; the first path it finds is a shortest one.",

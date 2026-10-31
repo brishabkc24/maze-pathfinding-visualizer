@@ -23,7 +23,10 @@ else: no numpy, no pip install, just `python app.py`.
    and set how many loops it should have.
 2. **Choose the algorithms.** Tick any of the six, or use a quick pick such as
    *BFS vs DFS* or *Dijkstra vs A\**. Each algorithm gets its own panel; fewer
-   panels means bigger cells.
+   panels means bigger cells. The *Guess to the goal* box picks the heuristic
+   that A\*, Greedy and Hill Climbing use: Manhattan, Euclidean or Chebyshev.
+   All three keep A\* on the shortest path; Manhattan is the closest guess on
+   a grid, so A\* checks the fewest cells with it.
 3. **Run the race.** Start, Pause, Step one move at a time, Finish now, Reset,
    and a speed slider. Every algorithm moves the same number of steps per tick,
    so the comparison is fair.

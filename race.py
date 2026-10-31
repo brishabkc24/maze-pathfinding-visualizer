@@ -16,7 +16,7 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Callable, Iterator
 
-from algorithms import ALGORITHMS, Event, bfs, run
+from algorithms import Event, Heuristic, bfs, create, manhattan, run
 from grid import Grid, Node
 
 
@@ -76,10 +76,14 @@ class Runner:
 class Race:
     """Runs the chosen algorithms on one grid in lockstep."""
 
-    def __init__(self, grid: Grid, entries: list[tuple[str, str]]):
-        """``entries`` pairs an algorithm name from :data:`ALGORITHMS` with a colour."""
+    def __init__(self, grid: Grid, entries: list[tuple[str, str]],
+                 heuristic: Heuristic = manhattan):
+        """``entries`` pairs an algorithm name from :data:`algorithms.ALGORITHMS`
+        with a colour; ``heuristic`` is the guess to the goal handed to A*,
+        Greedy and Hill Climbing."""
         self.grid = grid
-        self.runners = [Runner(name, color, ALGORITHMS[name](grid), self.clock)
+        self.heuristic = heuristic
+        self.runners = [Runner(name, color, create(name, grid, heuristic), self.clock)
                         for name, color in entries]
         optimal, _ = run(bfs, grid)
         self.optimal_length: int | None = None if optimal is None else len(optimal) - 1
