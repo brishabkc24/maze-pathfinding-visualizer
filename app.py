@@ -24,6 +24,7 @@ from race import Race, Runner
 from templates import TEMPLATES
 
 TICK_MS = 25             # one animation tick; the speed slider sets events per tick
+STATS_EVERY = 4          # ticks between scoreboard refreshes: ten a second is plenty
 SIDEBAR_WIDTH = 284
 DEFAULT_TEMPLATE = "Maze with some loops"
 
@@ -333,6 +334,7 @@ class App:
         self.help_window: tk.Toplevel | None = None
         self._laid_out_size = (0, 0)      # window size the panels were last built for
         self._relayout_id: str | None = None
+        self._ticks = 0
 
         self.note_var = tk.StringVar()
         self.status_var = tk.StringVar(value="Ready. Choose a maze and press Start.")
@@ -718,6 +720,7 @@ class App:
             return
         if race.started_at is None:
             race.start()          # the clock starts when Start is pressed
+            self._ticks = 0
         race.resume()             # and runs again after a pause
         self.running = True
         self.run_button.config(text="❙❙  Pause")
@@ -731,6 +734,7 @@ class App:
             self.after_id = None
         if self.race is not None:
             self.race.pause()     # paused time is not time taken
+            self.refresh_stats()  # and the frozen numbers are shown exactly
         if self.race is not None and not self.race.finished and self.race.started_at:
             self.run_button.config(text="▶  Resume")
             self.set_status("Paused. Right arrow steps one move at a time.")
@@ -745,16 +749,23 @@ class App:
         if not self.running or self.race is None:
             return
         self._advance(self.speed.get())
+        self._ticks += 1
         if self.race.finished:
             self._finish()
-        else:
-            self._schedule()
+            return
+        if self._ticks % STATS_EVERY == 0:
+            # Rewriting the scoreboard rows and panel counters 40 times a second
+            # is wasted work on a slow classroom laptop; a few times a second reads
+            # the same to the eye.
+            self.refresh_stats()
+        self._schedule()
 
     def _advance(self, k: int) -> None:
+        """Move every runner ``k`` events and paint them. The scoreboard is
+        refreshed separately, so painting stays cheap."""
         assert self.race is not None
         for runner, event in self.race.step(k):
             self.panel_by_name[runner.name].apply(event)
-        self.refresh_stats()
 
     def step_once(self) -> None:
         if self.running:
@@ -765,6 +776,7 @@ class App:
             if race.finished:
                 self._finish()
             else:
+                self.refresh_stats()      # a step by hand shows its numbers at once
                 self.run_button.config(text="▶  Resume")
 
     def finish_now(self) -> None:
@@ -775,7 +787,6 @@ class App:
         race.run_to_completion()
         for runner in race.runners:
             self.panel_by_name[runner.name].render(runner)
-        self.refresh_stats()
         self._finish()
 
     def _finish(self) -> None:
@@ -783,6 +794,7 @@ class App:
         self.run_button.config(text="▶  Start")
         race = self.race
         assert race is not None
+        self.refresh_stats()          # always once, with the final numbers
         found = [r for r in race.runners if r.found]
         parts = []
         if found:
