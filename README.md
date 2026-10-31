@@ -3,6 +3,7 @@
 [![Tests](https://github.com/brishabkc24/maze-pathfinding-visualizer/actions/workflows/tests.yml/badge.svg)](https://github.com/brishabkc24/maze-pathfinding-visualizer/actions/workflows/tests.yml)
 ![Python 3.10+](https://img.shields.io/badge/python-3.10%2B-blue)
 ![No dependencies](https://img.shields.io/badge/dependencies-none-brightgreen)
+[![Download for Windows](https://img.shields.io/github/v/release/brishabkc24/maze-pathfinding-visualizer?label=download%20.exe)](https://github.com/brishabkc24/maze-pathfinding-visualizer/releases/latest)
 
 Watch BFS, DFS, Dijkstra, A\*, Greedy best-first and Hill Climbing solve the
 same maze side by side, each in its own colour, with a scoreboard that records
@@ -60,10 +61,19 @@ until a wall is between it and the goal and stops there.
 
 ## Run it
 
-Python 3.10 or newer with Tkinter (included with the standard installers on
-Windows and macOS; on Debian/Ubuntu install `python3-tk`).
+**Windows, no Python needed:** download `MazePathfindingVisualizer.exe` from
+the [latest release](https://github.com/brishabkc24/maze-pathfinding-visualizer/releases/latest)
+and double-click it. The first launch takes a few seconds while Windows unpacks
+it, and SmartScreen may warn because the file is not signed: choose "More
+info", then "Run anyway".
+
+**From source:** Python 3.10 or newer with Tkinter (included with the standard
+installers on Windows and macOS; on Debian/Ubuntu install `python3-tk`). No
+other dependencies.
 
 ```bash
+git clone https://github.com/brishabkc24/maze-pathfinding-visualizer.git
+cd maze-pathfinding-visualizer
 python app.py
 ```
 
