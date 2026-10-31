@@ -26,3 +26,45 @@ jobs:
         run: pip install -r requirements-dev.txt
       - name: Run the test suite
         run: python -m pytest
+
+  build-exe:
+    name: Build Windows .exe
+    runs-on: windows-latest
+    needs: tests
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install build dependencies
+        run: pip install -r requirements-build.txt
+      - name: Build with PyInstaller
+        run: python -m PyInstaller MazePathfindingVisualizer.spec --noconfirm --clean
+      - name: Upload the executable
+        uses: actions/upload-artifact@v4
+        with:
+          name: MazePathfindingVisualizer-windows
+          path: dist/MazePathfindingVisualizer.exe
+          if-no-files-found: error
+
+  release:
+    name: Publish release
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: build-exe
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download the built executable
+        uses: actions/download-artifact@v4
+        with:
+          name: MazePathfindingVisualizer-windows
+          path: dist
+      - name: Create the GitHub release with the executable attached
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" dist/MazePathfindingVisualizer.exe
+          --repo "$GITHUB_REPOSITORY"
+          --title "Maze Pathfinding Visualizer $GITHUB_REF_NAME"
+          --generate-notes

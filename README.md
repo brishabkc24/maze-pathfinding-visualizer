@@ -77,6 +77,12 @@ cd maze-pathfinding-visualizer
 python app.py
 ```
 
+**Build the exe yourself:** install PyInstaller with
+`pip install -r requirements-build.txt`, then run
+`python -m PyInstaller MazePathfindingVisualizer.spec --noconfirm --clean`;
+the file appears in `dist/`. GitHub Actions runs the same build on every push,
+and pushing a tag such as `v1.1` publishes a release with the exe attached.
+
 ## How it works
 
 - `grid.py` is the model: a list-of-lists of open and wall cells plus the

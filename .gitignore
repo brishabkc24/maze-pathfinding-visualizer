@@ -14,6 +14,6 @@ venv/
 .idea/
 .vscode/
 
-# Build output (no build step yet; kept so a future one stays clean)
+# PyInstaller output (the spec file at the root is the build recipe)
 build/
 dist/
