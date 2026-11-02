@@ -68,8 +68,9 @@ jobs:
       - name: Create the GitHub release with the executable attached
         env:
           GH_TOKEN: ${{ github.token }}
+        # No --repo here: gh refuses it together with --notes-from-tag, and the
+        # checkout above already tells gh which repository this is.
         run: >
           gh release create "$GITHUB_REF_NAME" dist/MazePathfindingVisualizer.exe
-          --repo "$GITHUB_REPOSITORY"
           --title "Maze Pathfinding Visualizer $GITHUB_REF_NAME"
           --notes-from-tag
