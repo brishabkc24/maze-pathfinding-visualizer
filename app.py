@@ -472,12 +472,13 @@ class MazeScreen(Screen):
     def refresh(self) -> None:
         self.name_label.config(text=self.app.maze_name)
         self.note_label.config(text=self.app.maze_note)
+        self.build_preview()                 # lays the window out, so the list knows its height
         self.listbox.selection_clear(0, "end")
+        self.listbox.yview_moveto(0)
         index = self.app.template_index
         if index is not None:
             self.listbox.selection_set(index)
             self.listbox.see(index)
-        self.build_preview()
         self.update_facts()
 
     def build_preview(self) -> None:
