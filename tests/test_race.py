@@ -1,6 +1,7 @@
 import time
 
 from algorithms import ALGORITHMS, run
+from grid import Grid
 from maze_gen import generate
 from race import Race
 
@@ -79,3 +80,32 @@ def test_finished_runners_are_left_alone():
     steps = [r.steps for r in race.runners]
     assert race.step(10) == []
     assert [r.steps for r in race.runners] == steps
+
+
+def test_results_name_the_winner_and_the_awards():
+    grid = generate(seed=4, braid_fraction=0.15)
+    race = Race(grid, ENTRIES)
+    race.run_to_completion()
+    res = race.results()
+    found = [r for r in race.runners if r.found]
+    assert res.winners and all(r.steps == min(f.steps for f in found) for r in res.winners)
+    assert res.winner_moves == res.winners[0].steps
+    assert [r.name for r in res.order[:len(found)]] == \
+        [r.name for r in sorted(found, key=lambda r: r.steps)]
+    assert {r.name for r in res.shortest} >= {"BFS", "Dijkstra", "A*"}
+    assert all(race.is_optimal(r) for r in res.shortest)
+    assert len(res.fewest_checked.explored) == min(len(r.explored) for r in found)
+    assert res.quickest_compute in found
+    assert res.did_not_finish == [r for r in race.runners if not r.found]
+    assert res.order[len(found):] == res.did_not_finish
+
+
+def test_results_with_no_finisher_have_no_winner():
+    race = Race(Grid.from_rows(["S..", ".##", ".#G"]), ENTRIES)      # the goal is sealed off
+    race.run_to_completion()
+    res = race.results()
+    assert res.winners == [] and res.winner_moves is None
+    assert res.shortest == []
+    assert res.fewest_checked is None and res.quickest_compute is None
+    assert [r.name for r in res.did_not_finish] == list(ALGORITHMS)
+    assert res.order == res.did_not_finish

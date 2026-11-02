@@ -73,6 +73,21 @@ class Runner:
         return "path found" if self.found else "no path"
 
 
+@dataclass
+class Results:
+    """Who won, and the awards, once every runner is done."""
+    order: list[Runner]                 # finishers first, fewest moves first, then the rest
+    winners: list[Runner]               # first to reach the goal; a dead heat lists them all
+    shortest: list[Runner]              # found a shortest path
+    fewest_checked: Runner | None       # finisher that checked the fewest cells
+    quickest_compute: Runner | None     # finisher with the least time inside the algorithm
+    did_not_finish: list[Runner]
+
+    @property
+    def winner_moves(self) -> int | None:
+        return self.winners[0].steps if self.winners else None
+
+
 class Race:
     """Runs the chosen algorithms on one grid in lockstep."""
 
@@ -162,3 +177,20 @@ class Race:
         if runner.path_length is None or self.optimal_length is None:
             return None
         return runner.path_length == self.optimal_length
+
+    def results(self) -> Results:
+        """The standings and the awards. The winner is the runner that reached
+        the goal in the fewest moves; runners still going, or that found no
+        path, count as not finished."""
+        found = [r for r in self.runners if r.found]
+        rest = [r for r in self.runners if not r.found]
+        order = sorted(found, key=lambda r: r.steps) + rest      # stable: ties keep race order
+        best_moves = min((r.steps for r in found), default=None)
+        return Results(
+            order=order,
+            winners=[r for r in found if r.steps == best_moves],
+            shortest=[r for r in found if self.is_optimal(r)],
+            fewest_checked=min(found, key=lambda r: len(r.explored), default=None),
+            quickest_compute=min(found, key=lambda r: r.compute_seconds, default=None),
+            did_not_finish=rest,
+        )
