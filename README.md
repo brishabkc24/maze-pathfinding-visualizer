@@ -7,14 +7,18 @@
 
 Watch BFS, DFS, Dijkstra, A\*, Greedy best-first and Hill Climbing solve the
 same maze side by side, each in its own colour, and find out who won. Made for
-showing search algorithms to a class: five screens that read like an app,
-plain words everywhere, and a "How it works" window that explains the rest.
-Python with Tkinter and nothing else: no numpy, no pip install, just
-`python app.py`.
+showing search algorithms to a class: a dark, designed interface with a
+sidebar of five steps, plain words everywhere, and a "How it works" window
+that explains the rest. Python with Tkinter and nothing else: no numpy, no pip
+install, just `python app.py`. Every control is drawn by the app itself, so it
+looks like an app and not like a dialog box.
 
 ![The race screen: all six algorithms on maze 21, Maze with some loops](docs/race.png)
 
 ## Five screens
+
+The sidebar on the left lists them. While the race runs it folds into a narrow
+rail of numbered badges, so the panels get the whole width.
 
 1. **Maze.** 26 ready-made mazes, each built to make a point: Empty room,
    Wall with a door at the top, The trap, Spiral, Dead ends, Big detour,
@@ -23,8 +27,10 @@ Python with Tkinter and nothing else: no numpy, no pip install, just
    many loops as you like, or start from a blank canvas and draw your own:
    left-drag paints walls, right-drag erases them, and the green start and red
    goal dots can be dragged.
-2. **Runners.** One card per algorithm: tick it to race, and pick its colour
-   from the chips or from the full colour dialog. Quick picks set up common
+2. **Runners.** One card per algorithm: switch it on to race, and pick its
+   colour from the chips or from the full colour dialog. A runner's full colour
+   marks the cells it has found but not checked yet, a dimmer shade the cells it
+   has checked, and gold is always the final path. Quick picks set up common
    comparisons such as *BFS vs DFS* or *Dijkstra vs A\**. The *Guess to the
    goal* box picks the heuristic that A\*, Greedy and Hill Climbing use:
    Manhattan, Euclidean or Chebyshev. All three keep A\* on the shortest path;
@@ -44,8 +50,8 @@ Python with Tkinter and nothing else: no numpy, no pip install, just
 | Maze | Runners |
 | --- | --- |
 | ![The maze screen](docs/maze.png) | ![The runners screen](docs/runners.png) |
-
-![The results screen](docs/results.png)
+| **Speed** | **Results** |
+| ![The speed screen](docs/speed.png) | ![The results screen](docs/results.png) |
 
 ## Who wins
 
@@ -122,11 +128,18 @@ tag: `git tag -a v1.2 -m "..."`.
 - `maze_gen.py` carves a perfect maze by recursive backtracking and then
   *braids* it by removing a fraction of the walls between corridors.
   `templates.py` is the catalogue of ready-made mazes.
-- `app.py` is the five screens. The settings live on the `App`; each screen
-  reads them when it is shown, and changing a setting discards the race so
-  that every race is a fair one. The panels draw one rectangle per cell
-  **once** and only recolor them afterwards. Nothing is deleted and redrawn,
-  which is what keeps the canvas smooth with six panels animating at once.
+- `app.py` is the five screens and the sidebar. The settings live on the
+  `App`; each screen reads them when it is shown, and changing a setting
+  discards the race so that every race is a fair one. The panels draw one
+  rectangle per cell **once** and only recolor them afterwards. Nothing is
+  deleted and redrawn, which is what keeps the canvas smooth with six panels
+  animating at once.
+- `ui.py` is the look: the dark palette and the widgets the app draws for
+  itself on canvases, since Tk's own buttons, check boxes and scales look like
+  a dialog box from another decade. Rounded buttons, pill switches, a
+  segmented control, sliders, colour chips, cards with rounded corners and the
+  sidebar items all live here, and each one re-measures itself when Big text
+  rescales the fonts.
 
 ## Tests
 

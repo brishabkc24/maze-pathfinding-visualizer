@@ -1,15 +1,17 @@
 """Maze Pathfinding Visualizer: the Tkinter app.
 
-The app is a row of screens, like a setup wizard followed by the race:
+The window is a sidebar of five steps and one screen showing at a time, like
+a setup flow followed by the race:
 
     1  Maze      pick a ready-made maze, make a random one, or draw your own
-    2  Runners   tick the algorithms that race, give each its colour, choose the guess
+    2  Runners   switch on the algorithms that race, give each its colour, choose the guess
     3  Speed     moves per tick, a countdown, big text for a projector
     4  Race      every chosen algorithm solves the same maze at the same time
     5  Results   who won, the awards, the full table and a chart
 
 The model (grid.py), the algorithms (algorithms.py) and the lockstep race
-(race.py) have no Tkinter in them; this file is only the interface.
+(race.py) have no Tkinter in them; this file is only the interface, and the
+theme and the hand-drawn widgets it is built from live in ui.py.
 
 Run with ``python app.py``.
 """
@@ -17,11 +19,14 @@ from __future__ import annotations
 
 import math
 import random
+import sys
+import time
 import tkinter as tk
 import tkinter.font as tkfont
 from datetime import datetime
 from tkinter import colorchooser, ttk
 
+import ui
 from algorithms import ALGORITHMS, HEURISTICS, bfs, run
 from grid import Grid, Node
 from maze_gen import generate
@@ -32,32 +37,28 @@ TICK_MS = 25             # one animation tick; the speed setting is moves per ti
 STATS_EVERY = 4          # ticks between counter refreshes: ten a second is plenty
 DEFAULT_TEMPLATE = "Maze with some loops"
 
-COLOR_WALL = "#1f2933"
-COLOR_OPEN = "#f5f5f0"
-COLOR_GRIDLINE = "#e2e0d8"
-COLOR_START = "#2e9e4f"
-COLOR_GOAL = "#d64545"
+# The maze itself: slate corridors between near-black walls, so the runners'
+# colours are the brightest thing on the screen.
+COLOR_WALL = "#070a10"
+COLOR_OPEN = "#1c2433"
+COLOR_GRIDLINE = "#263042"
+COLOR_START = "#3ddc84"
+COLOR_GOAL = "#ff5c5c"
 COLOR_PATH = "#ffc400"
-COLOR_BG = "#eeece6"
-COLOR_CARD = "#ffffff"
-COLOR_TEXT = "#1f2933"
-COLOR_MUTED = "#5b6470"
-COLOR_TROUGH = "#d6d3ca"
-COLOR_ACCENT = "#1f6feb"
 
 # The colours the runners start with; the Runners screen can change them.
 ALGO_COLORS = {
-    "BFS": "#1f6feb",
-    "DFS": "#8250df",
-    "Dijkstra": "#0d9488",
-    "A*": "#e8590c",
-    "Greedy": "#d6336c",
-    "Hill Climbing": "#4b5563",
+    "BFS": "#3b82f6",
+    "DFS": "#a855f7",
+    "Dijkstra": "#14b8a6",
+    "A*": "#f97316",
+    "Greedy": "#ec4899",
+    "Hill Climbing": "#94a3b8",
 }
 
 # The colour chips offered for every runner. Gold is left out: it is the path.
-PALETTE = ("#1f6feb", "#8250df", "#0d9488", "#e8590c", "#d6336c", "#4b5563",
-           "#16a34a", "#dc2626", "#0891b2", "#9333ea", "#b45309", "#111827")
+PALETTE = ("#3b82f6", "#a855f7", "#14b8a6", "#f97316", "#ec4899", "#94a3b8",
+           "#22c55e", "#ef4444", "#06b6d4", "#84cc16", "#f43f5e", "#f1f5f9")
 
 # One line under each runner's name, in plain words.
 TAGLINES = {
@@ -83,17 +84,21 @@ SPEED_PRESETS = (
     ("Very fast", 40, "Almost instant. Use Step and Finish on the race screen for the details."),
 )
 
-STEPS = (("maze", "Maze"), ("runners", "Runners"), ("speed", "Speed"),
-         ("race", "Race"), ("results", "Results"))
+# The sidebar: key, name, and the hint under the name.
+STEPS = (("maze", "Maze", "Pick a course or draw one"),
+         ("runners", "Runners", "Algorithms and colours"),
+         ("speed", "Speed", "Moves per tick, countdown"),
+         ("race", "Race", "Side by side, live"),
+         ("results", "Results", "Who won, and why"))
 
 HELP = (
     ("h", "How to use the Maze Pathfinding Visualizer\n"),
-    ("", "The app is five screens, listed in the bar at the top.\n"
+    ("", "The app is five screens, listed down the left side.\n"
          "1  Maze: pick one of the 26 ready-made mazes, make a random one with as many loops "
          "as you like, or start from a blank canvas. Draw on the preview: left-drag paints "
          "walls, right-drag erases them, and the green start and red goal dots can be dragged.\n"
-         "2  Runners: tick the algorithms that race, give each one its colour, and choose the "
-         "guess to the goal that A*, Greedy and Hill Climbing use.\n"
+         "2  Runners: switch on the algorithms that race, give each one its colour, and choose "
+         "the guess to the goal that A*, Greedy and Hill Climbing use.\n"
          "3  Speed: how many moves every runner makes per tick, a countdown, and big text for "
          "a projector. Then press Start the race.\n"
          "4  Race: every runner solves the same maze at the same time, each in its own panel. "
@@ -101,10 +106,9 @@ HELP = (
          "5  Results: who won, the awards, the full table with every time, and a chart of the "
          "cells each runner checked.\n"),
     ("h", "What the colours mean\n"),
-    ("", "Green dot: the start.  Red dot: the goal.  Dark cells: walls.\n"
-         "Strong shade of a runner's colour: cells it has found but not checked yet (its "
-         "frontier).\n"
-         "Light shade: cells it has already checked (explored).\n"
+    ("", "Green dot: the start.  Red dot: the goal.  Near-black cells: walls.\n"
+         "A runner's full colour: cells it has found but not checked yet (its frontier).\n"
+         "A dimmer shade of it: cells it has already checked (explored).\n"
          "Gold: the path it finally chose.\n"),
     ("h", "The algorithms\n"),
     ("BFS", "BFS, breadth-first search.  "),
@@ -129,7 +133,7 @@ HELP = (
     ("", "No queue at all. From the current cell, step to the neighbour closest to the goal; "
          "if no neighbour is closer, stop. It keeps no memory of other options, so one wall in "
          "the way leaves it stuck at a local minimum. That is why search needs a frontier. "
-         "The cells it looks at are shown in the frontier colour, but it never returns to them.\n"),
+         "The cells it looks at are shown in its full colour, but it never returns to them.\n"),
     ("h", "The guess to the goal\n"),
     ("", "A*, Greedy and Hill Climbing need a guess of how far a cell is from the goal, and "
          "the Runners screen chooses it. Manhattan counts rows plus columns, which is the exact "
@@ -165,6 +169,16 @@ def blend(color: str, other: str, t: float) -> str:
     return "#%02x%02x%02x" % tuple(round(x + (y - x) * t) for x, y in zip(a, b))
 
 
+def frontier_shade(color: str) -> str:
+    """Cells a runner has found but not checked yet: its full colour."""
+    return color
+
+
+def explored_shade(color: str) -> str:
+    """Cells a runner has checked: its colour sunk towards the corridor floor."""
+    return blend(color, COLOR_OPEN, 0.6)
+
+
 def fmt_clock(moment: datetime | None) -> str:
     if moment is None:
         return ""
@@ -176,18 +190,36 @@ def plural(n: int, word: str) -> str:
 
 
 class Fonts:
-    """Named fonts shared by every widget, so Big text can rescale them all at once."""
+    """Named fonts shared by every widget, so Big text can rescale them all at once.
+    Headings and numbers use a display face, the rest the system text face."""
 
-    SIZES = {"body": 10, "bold": 10, "small": 9, "title": 12, "chip": 11, "big": 18, "huge": 54}
+    SIZES = {"body": 10, "bold": 10, "small": 9, "label": 9, "eyebrow": 8, "nav": 11,
+             "chip": 10, "title": 13, "h1": 20, "display": 26, "brand": 15, "number": 22,
+             "big": 18, "huge": 64}
 
     def __init__(self) -> None:
-        self.body = tkfont.Font(family="Segoe UI", size=10)
-        self.bold = tkfont.Font(family="Segoe UI", size=10, weight="bold")
-        self.small = tkfont.Font(family="Segoe UI", size=9)
-        self.title = tkfont.Font(family="Segoe UI", size=12, weight="bold")
-        self.chip = tkfont.Font(family="Segoe UI", size=11, weight="bold")
-        self.big = tkfont.Font(family="Segoe UI", size=18, weight="bold")
-        self.huge = tkfont.Font(family="Segoe UI", size=54, weight="bold")
+        families = set(tkfont.families())
+
+        def pick(*names: str) -> str:
+            return next((n for n in names if n in families), "Helvetica")
+
+        display = pick("Bahnschrift", "Segoe UI Variable Display", "Segoe UI", "Helvetica")
+        text = pick("Segoe UI", "Helvetica")
+        s = self.SIZES
+        self.body = tkfont.Font(family=text, size=s["body"])
+        self.bold = tkfont.Font(family=text, size=s["bold"], weight="bold")
+        self.small = tkfont.Font(family=text, size=s["small"])
+        self.label = tkfont.Font(family=text, size=s["label"], weight="bold")
+        self.eyebrow = tkfont.Font(family=text, size=s["eyebrow"], weight="bold")
+        self.nav = tkfont.Font(family=text, size=s["nav"], weight="bold")
+        self.chip = tkfont.Font(family=text, size=s["chip"], weight="bold")
+        self.title = tkfont.Font(family=display, size=s["title"], weight="bold")
+        self.h1 = tkfont.Font(family=display, size=s["h1"], weight="bold")
+        self.display = tkfont.Font(family=display, size=s["display"], weight="bold")
+        self.brand = tkfont.Font(family=display, size=s["brand"], weight="bold")
+        self.number = tkfont.Font(family=display, size=s["number"], weight="bold")
+        self.big = tkfont.Font(family=display, size=s["big"], weight="bold")
+        self.huge = tkfont.Font(family=display, size=s["huge"], weight="bold")
 
     def scale(self, factor: float) -> None:
         for name, size in self.SIZES.items():
@@ -250,37 +282,40 @@ class GridCanvas(tk.Canvas):
         self.place_dots()
 
 
-class Panel(ttk.Frame):
-    """One runner's view on the race screen: a coloured name, a one-line
-    description, live counters in plain words, and the maze canvas."""
+class Panel(ui.Card):
+    """One runner's view on the race screen: its name in a coloured pill, a
+    one-line description, live counters in plain words, and the maze canvas."""
+
+    PADX, PADY = 8, 6
 
     def __init__(self, master: tk.Misc, model: Grid, name: str, color: str,
                  cell: int, fonts: Fonts, compact: bool = False):
-        super().__init__(master)
+        super().__init__(master, padx=self.PADX, pady=self.PADY)
         self.name = name
         self.color = color
         self.compact = compact
-        self.explored_color = blend(color, "#ffffff", 0.68)
-        self.frontier_color = blend(color, "#ffffff", 0.22)
+        self.explored_color = explored_shade(color)
+        self.frontier_color = frontier_shade(color)
 
-        head = tk.Frame(self, bg=COLOR_BG)
+        body = self.body
+        head = tk.Frame(body, bg=ui.CARD)
         head.pack(fill="x")
-        tk.Label(head, text=name, fg="white", bg=color, font=fonts.chip,
-                 padx=10, pady=1).pack(side="left")
+        ui.Tag(head, name, color, fonts.chip).pack(side="left")
         if compact:
             # Narrow panel: counters share the name line and the tagline is left out.
-            self.stats = tk.Label(head, text="ready", bg=COLOR_BG, fg=COLOR_TEXT,
+            self.stats = tk.Label(head, text="ready", bg=ui.CARD, fg=ui.MUTED,
                                   font=fonts.small, anchor="e")
             self.stats.pack(side="right", fill="x", expand=True)
         else:
-            tk.Label(head, text=TAGLINES[name], bg=COLOR_BG, fg=COLOR_MUTED,
+            tk.Label(head, text=TAGLINES[name], bg=ui.CARD, fg=ui.MUTED,
                      font=fonts.small, anchor="w").pack(side="left", padx=(8, 0))
-            self.stats = tk.Label(self, text="ready", bg=COLOR_BG, fg=COLOR_TEXT,
+            self.stats = tk.Label(body, text="ready", bg=ui.CARD, fg=ui.TEXT,
                                   font=fonts.body, anchor="w")
-            self.stats.pack(fill="x", pady=(1, 2))
+            self.stats.pack(fill="x", pady=(4, 6))
 
-        self.canvas = GridCanvas(self, model, cell)
-        self.canvas.pack(pady=(2, 0) if compact else 0)
+        self.canvas = GridCanvas(body, model, cell)
+        self.canvas.pack(pady=(6, 0) if compact else 0)
+        self.fit()
 
     def apply(self, event: tuple) -> None:
         kind, payload = event
@@ -329,48 +364,86 @@ class Panel(ttk.Frame):
         self.stats.config(text=sep.join(parts))
 
 
-class StepBar(tk.Frame):
-    """The numbered steps across the top. The current one is highlighted, the
-    others can be clicked, and Results is greyed out until a race has finished."""
+class Sidebar(tk.Frame):
+    """The column on the left: the mark, the five steps in two groups, and the
+    help link. The current step is highlighted, the others can be clicked, and
+    Results is greyed out until a race has finished. While the race screen
+    shows, the sidebar folds into a narrow rail of badges so the panels get
+    the width."""
+
+    WIDTH = 220
+    RAIL = 64
 
     def __init__(self, master: tk.Misc, app: App):
-        super().__init__(master, bg=COLOR_BG)
-        self.items: dict[str, tuple[tk.Label, tk.Label]] = {}
-        for i, (key, label) in enumerate(STEPS):
-            cell = tk.Frame(self, bg=COLOR_BG, cursor="hand2")
-            cell.pack(side="left")
-            num = tk.Label(cell, text=str(i + 1), width=2, font=app.fonts.chip,
-                           bg=COLOR_TROUGH, fg=COLOR_TEXT)
-            num.pack(side="left")
-            txt = tk.Label(cell, text=label, font=app.fonts.bold, bg=COLOR_BG,
-                           fg=COLOR_MUTED, padx=6)
-            txt.pack(side="left")
-            for widget in (cell, num, txt):
-                widget.bind("<Button-1>", lambda _e, k=key: app.show(k))
-            if i < len(STEPS) - 1:
-                tk.Label(self, text="›", font=app.fonts.title, bg=COLOR_BG,
-                         fg=COLOR_MUTED, padx=8).pack(side="left")
-            self.items[key] = (num, txt)
+        super().__init__(master, bg=ui.SIDEBAR, width=self.WIDTH)
+        self.pack_propagate(False)
+        f = app.fonts
+        self.compact = False
+        self.brand = tk.Frame(self, bg=ui.SIDEBAR)
+        self.brand.pack(fill="x", padx=18, pady=(22, 14))
+        ui.BrandMark(self.brand, 40).pack(anchor="w")
+        self.words = tk.Frame(self.brand, bg=ui.SIDEBAR)
+        self.words.pack(fill="x", pady=(12, 0))
+        tk.Label(self.words, text="Maze Pathfinding", font=f.brand, bg=ui.SIDEBAR, fg=ui.TEXT,
+                 anchor="w").pack(fill="x")
+        tk.Label(self.words, text="Visualizer", font=f.brand, bg=ui.SIDEBAR, fg=ui.MUTED,
+                 anchor="w").pack(fill="x")
+
+        self.items: dict[str, ui.NavItem] = {}
+        self.eyebrows: list[tuple[tk.Label, str]] = []
+        for title, steps in (("Set up", STEPS[:3]), ("Run", STEPS[3:])):
+            label = ui.eyebrow(self, title, f.eyebrow)
+            label.pack(fill="x", padx=22, pady=(14, 4))
+            self.eyebrows.append((label, title))
+            for key, name, hint in steps:
+                number = [s[0] for s in STEPS].index(key) + 1
+                item = ui.NavItem(self, number, name, hint, lambda k=key: app.show(k),
+                                  f.nav, f.small, f.chip)
+                item.pack(fill="x")
+                self.items[key] = item
+
+        foot = tk.Frame(self, bg=ui.SIDEBAR)
+        foot.pack(side="bottom", fill="x", padx=14, pady=16)
+        self.help_button = ui.Button(foot, "How it works", app.show_help, kind="ghost",
+                                     font=f.body)
+        self.help_button.pack(side="left")
+        self.key_label = tk.Label(foot, text="F1", font=f.small, bg=ui.SIDEBAR, fg=ui.FAINT)
+        self.key_label.pack(side="left", padx=(4, 0))
+
+    def set_compact(self, compact: bool) -> None:
+        if compact == self.compact:
+            return
+        self.compact = compact
+        self.config(width=self.RAIL if compact else self.WIDTH)
+        self.brand.pack_configure(padx=12 if compact else 18)
+        if compact:
+            self.words.pack_forget()
+            self.key_label.pack_forget()
+        else:
+            self.words.pack(fill="x", pady=(12, 0))
+            self.key_label.pack(side="left", padx=(4, 0))
+        for label, title in self.eyebrows:
+            label.config(text="" if compact else title.upper())
+        self.help_button.set_text("?" if compact else "How it works")
+        for item in self.items.values():
+            item.set_compact(compact)
 
     def set_current(self, current: str, finished: bool) -> None:
-        for key, (num, txt) in self.items.items():
+        for key, item in self.items.items():
             if key == current:
-                num.config(bg=COLOR_ACCENT, fg="white")
-                txt.config(fg=COLOR_TEXT)
+                item.set_state("active")
             elif key == "results" and not finished:
-                num.config(bg=COLOR_BG, fg=COLOR_TROUGH)
-                txt.config(fg=COLOR_TROUGH)
+                item.set_state("disabled")
             else:
-                num.config(bg=COLOR_TROUGH, fg=COLOR_TEXT)
-                txt.config(fg=COLOR_MUTED)
+                item.set_state("normal")
 
 
-class Screen(ttk.Frame):
+class Screen(tk.Frame):
     """One screen of the app. ``refresh`` runs every time it is shown and
     ``relayout`` when the window changes size while it is showing."""
 
     def __init__(self, master: tk.Misc, app: App):
-        super().__init__(master)
+        super().__init__(master, bg=ui.BG)
         self.app = app
         self.fonts = app.fonts
 
@@ -381,28 +454,43 @@ class Screen(ttk.Frame):
         pass
 
     def heading(self, parent: tk.Misc, text: str, sub: str | None = None,
-                wrap: int = 960) -> None:
-        tk.Label(parent, text=text, font=self.fonts.title, bg=COLOR_BG, fg=COLOR_TEXT,
+                wrap: int = 900) -> tk.Frame:
+        block = tk.Frame(parent, bg=ui.BG)
+        block.pack(fill="x")
+        tk.Label(block, text=text, font=self.fonts.display, bg=ui.BG, fg=ui.TEXT,
                  anchor="w").pack(fill="x")
         if sub:
-            tk.Label(parent, text=sub, font=self.fonts.body, bg=COLOR_BG, fg=COLOR_MUTED,
-                     anchor="w", justify="left", wraplength=wrap).pack(fill="x", pady=(2, 0))
+            tk.Label(block, text=sub, font=self.fonts.body, bg=ui.BG, fg=ui.MUTED,
+                     anchor="w", justify="left", wraplength=wrap).pack(fill="x", pady=(4, 0))
+        return block
 
-    def card(self, parent: tk.Misc, **kwargs) -> tk.Frame:
-        return tk.Frame(parent, bg=COLOR_CARD, highlightbackground=COLOR_TROUGH,
-                        highlightthickness=1, **kwargs)
+    def eyebrow(self, parent: tk.Misc, text: str, pady=(18, 6)) -> tk.Label:
+        label = ui.eyebrow(parent, text, self.fonts.eyebrow)
+        label.pack(fill="x", pady=pady)
+        return label
+
+    def button(self, parent: tk.Misc, text: str, command, kind: str = "secondary",
+               **kw) -> ui.Button:
+        font = self.fonts.bold if kind == "primary" else self.fonts.body
+        return ui.Button(parent, text, command, kind=kind, font=font, **kw)
 
     def nav(self, back: tuple | None = None, forward: tuple | None = None,
-            accent: bool = False) -> ttk.Frame:
-        """The bar of Back / Next buttons along the bottom of a screen."""
-        bar = ttk.Frame(self)
-        bar.pack(side="bottom", fill="x", pady=(10, 0))
+            extra: tuple = ()) -> tk.Frame:
+        """The bar along the bottom: a quiet Back on the left, the one primary
+        action on the right, and any further links beside it."""
+        bar = tk.Frame(self, bg=ui.BG)
+        bar.pack(side="bottom", fill="x", pady=(12, 0))
+        tk.Frame(bar, bg=ui.BORDER, height=1).pack(fill="x", pady=(0, 10))
+        row = tk.Frame(bar, bg=ui.BG)
+        row.pack(fill="x")
         if back:
-            ttk.Button(bar, text=back[0], command=back[1], takefocus=False).pack(side="left")
+            self.button(row, back[0], back[1], kind="ghost").pack(side="left")
         if forward:
-            ttk.Button(bar, text=forward[0], command=forward[1], takefocus=False,
-                       style="Accent.TButton" if accent else "TButton").pack(side="right")
-        return bar
+            self.button(row, forward[0], forward[1], kind="primary", padx=22,
+                        pady=9).pack(side="right")
+        for label, command in extra:
+            self.button(row, label, command, kind="ghost").pack(side="right", padx=(0, 4))
+        return row
 
 
 class MazeScreen(Screen):
@@ -410,58 +498,64 @@ class MazeScreen(Screen):
 
     def __init__(self, master: tk.Misc, app: App):
         super().__init__(master, app)
-        self.nav(forward=("Next: choose the runners  ›", lambda: app.show("runners")))
-        body = ttk.Frame(self)
+        self.nav(forward=("Next: choose the runners  →", lambda: app.show("runners")))
+        body = tk.Frame(self, bg=ui.BG)
         body.pack(fill="both", expand=True)
 
-        left = ttk.Frame(body, width=290)
-        left.pack(side="left", fill="y", padx=(0, 18))
+        left = tk.Frame(body, bg=ui.BG, width=300)
+        left.pack(side="left", fill="y", padx=(0, 26))
         left.pack_propagate(False)
         self.heading(left, "Choose a maze", "26 ready-made mazes, each built to make a point.",
-                     wrap=270)
-        lst = ttk.Frame(left)
-        lst.pack(fill="both", expand=True, pady=(6, 0))
-        self.listbox = tk.Listbox(lst, font=self.fonts.body, activestyle="none",
-                                  exportselection=False, relief="flat", highlightthickness=1,
-                                  highlightbackground=COLOR_TROUGH, bg=COLOR_CARD,
-                                  fg=COLOR_TEXT, selectbackground=COLOR_ACCENT,
-                                  selectforeground="white", takefocus=0)
-        scroll = ttk.Scrollbar(lst, command=self.listbox.yview)
+                     wrap=280)
+        list_card = ui.Card(left, padx=6, pady=6)
+        list_card.pack(fill="both", expand=True, pady=(14, 0))
+        self.listbox = tk.Listbox(list_card.body, font=self.fonts.body, activestyle="none",
+                                  exportselection=False, relief="flat", bd=0,
+                                  highlightthickness=0, bg=ui.CARD, fg=ui.TEXT,
+                                  selectbackground=ui.SELECTED, selectforeground=ui.TEXT,
+                                  takefocus=0)
+        scroll = ttk.Scrollbar(list_card.body, command=self.listbox.yview)
         self.listbox.configure(yscrollcommand=scroll.set)
         self.listbox.pack(side="left", fill="both", expand=True)
         scroll.pack(side="right", fill="y")
         for i, t in enumerate(TEMPLATES):
-            self.listbox.insert("end", f"{i + 1}.  {t.name}")
+            self.listbox.insert("end", f"  {i + 1}.  {t.name}")
         self.listbox.bind("<<ListboxSelect>>", self.on_pick)
 
-        tk.Label(left, text="Or make your own", font=self.fonts.bold, bg=COLOR_BG,
-                 fg=COLOR_TEXT, anchor="w").pack(fill="x", pady=(12, 2))
-        ttk.Button(left, text="Make a random maze", command=self.make_random,
-                   takefocus=False).pack(fill="x")
+        self.eyebrow(left, "Or make your own")
+        self.button(left, "Make a random maze", self.make_random).pack(fill="x")
+        tk.Label(left, text="Loops in the random maze", font=self.fonts.small, bg=ui.BG,
+                 fg=ui.MUTED, anchor="w").pack(fill="x", pady=(10, 0))
         self.braid = tk.IntVar(value=15)
-        app.slider(left, "Loops in the random maze", self.braid, 0, 60, "none", "many")
-        ttk.Button(left, text="Start from a blank canvas", command=self.blank,
-                   takefocus=False).pack(fill="x", pady=(10, 0))
-        ttk.Button(left, text="Clear the walls of this maze", command=self.clear_walls,
-                   takefocus=False).pack(fill="x", pady=(4, 0))
+        ui.Slider(left, self.braid, 0, 60).pack(fill="x")
+        ends = tk.Frame(left, bg=ui.BG)
+        ends.pack(fill="x")
+        tk.Label(ends, text="none", bg=ui.BG, fg=ui.FAINT, font=self.fonts.small).pack(side="left")
+        tk.Label(ends, text="many", bg=ui.BG, fg=ui.FAINT, font=self.fonts.small).pack(side="right")
+        self.button(left, "Start from a blank canvas", self.blank).pack(fill="x", pady=(12, 0))
+        self.button(left, "Clear the walls of this maze", self.clear_walls,
+                    kind="ghost").pack(fill="x", pady=(6, 0))
 
-        right = ttk.Frame(body)
+        right = tk.Frame(body, bg=ui.BG)
         right.pack(side="left", fill="both", expand=True)
-        self.name_label = tk.Label(right, font=self.fonts.title, bg=COLOR_BG, fg=COLOR_TEXT,
-                                   anchor="w")
+        self.name_label = tk.Label(right, font=self.fonts.h1, bg=ui.BG, fg=ui.TEXT, anchor="w")
         self.name_label.pack(fill="x")
-        self.note_label = tk.Label(right, font=self.fonts.body, bg=COLOR_BG, fg=COLOR_MUTED,
-                                   anchor="w", justify="left", wraplength=960)
-        self.note_label.pack(fill="x", pady=(2, 6))
-        self.holder = ttk.Frame(right)
-        self.holder.pack(fill="both", expand=True)
-        self.facts = tk.Label(right, font=self.fonts.bold, bg=COLOR_BG, fg=COLOR_TEXT,
-                              anchor="w")
-        self.facts.pack(fill="x", pady=(6, 0))
-        tk.Label(right, text="Draw on the maze: left-drag paints walls, right-drag erases "
+        self.note_label = tk.Label(right, font=self.fonts.body, bg=ui.BG, fg=ui.MUTED,
+                                   anchor="w", justify="left", wraplength=900)
+        self.note_label.pack(fill="x", pady=(4, 12))
+        self.preview_card = ui.Card(right, padx=10, pady=10)
+        self.preview_card.pack(fill="both", expand=True)
+        self.holder = self.preview_card.body
+        facts = tk.Frame(right, bg=ui.BG)
+        facts.pack(fill="x", pady=(12, 0))
+        self.tiles = [ui.StatTile(facts, caption, self.fonts.number, self.fonts.small)
+                      for caption in ("cells", "walls", "shortest path")]
+        for tile in self.tiles:
+            tile.pack(side="left", padx=(0, 10))
+        tk.Label(facts, text="Draw on the maze: left-drag paints walls, right-drag erases "
                              "them, and the green start and red goal dots can be dragged.",
-                 font=self.fonts.small, bg=COLOR_BG, fg=COLOR_MUTED, anchor="w",
-                 justify="left", wraplength=960).pack(fill="x")
+                 font=self.fonts.small, bg=ui.BG, fg=ui.MUTED, anchor="w",
+                 justify="left", wraplength=420).pack(side="left", padx=(14, 0))
         self.canvas: GridCanvas | None = None
         self.drag: str | None = None
         self._facts_id: str | None = None
@@ -484,15 +578,17 @@ class MazeScreen(Screen):
     def build_preview(self) -> None:
         root = self.app.root
         root.update_idletasks()
-        w, h = self.holder.winfo_width(), self.holder.winfo_height()
+        card = self.preview_card
+        w = card.winfo_width() - 2 * ui.Card.INSET - 20
+        h = card.winfo_height() - 2 * ui.Card.INSET - 20
         if w < 100 or h < 100:                      # not laid out yet: estimate
-            w, h = root.winfo_width() - 380, root.winfo_height() - 300
+            w, h = root.winfo_width() - Sidebar.WIDTH - 400, root.winfo_height() - 370
         grid = self.app.grid
-        cell = max(4, min(22, (w - 10) // grid.cols, (h - 10) // grid.rows))
+        cell = max(4, min(22, w // grid.cols, h // grid.rows))
         for child in self.holder.winfo_children():
             child.destroy()
         self.canvas = GridCanvas(self.holder, grid, cell)
-        self.canvas.pack(anchor="nw")
+        self.canvas.pack(expand=True)
         canvas = self.canvas
         canvas.bind("<Button-1>", self.on_left_press)
         canvas.bind("<B1-Motion>", self.on_left_drag)
@@ -511,10 +607,13 @@ class MazeScreen(Screen):
         self._facts_id = None
         grid = self.app.grid
         path, _ = run(bfs, grid)
-        reach = (f"shortest path {len(path) - 1} steps" if path
-                 else "no path from the start to the goal")
-        self.facts.config(text=f"{grid.cols} × {grid.rows} cells   ·   "
-                               f"{plural(grid.wall_count, 'wall')}   ·   {reach}")
+        cells, walls, shortest = self.tiles
+        cells.set(f"{grid.cols} × {grid.rows}")
+        walls.set(str(grid.wall_count))
+        if path:
+            shortest.set(f"{len(path) - 1} steps", "shortest path")
+        else:
+            shortest.set("none", "no path to the goal")
 
     def _facts_soon(self) -> None:
         if self._facts_id is not None:
@@ -611,83 +710,76 @@ class RunnersScreen(Screen):
 
     def __init__(self, master: tk.Misc, app: App):
         super().__init__(master, app)
-        self.nav(back=("‹  Back: the maze", lambda: app.show("maze")),
-                 forward=("Next: set the speed  ›", lambda: app.show("speed")))
+        self.nav(back=("←  Back: the maze", lambda: app.show("maze")),
+                 forward=("Next: set the speed  →", lambda: app.show("speed")))
         self.heading(self, "Choose the runners",
-                     "Tick the algorithms that race, and give each one its colour.")
+                     "Switch on the algorithms that race, and give each one its colour.")
 
-        cards = ttk.Frame(self)
-        cards.pack(fill="x", pady=(8, 0))
+        cards = tk.Frame(self, bg=ui.BG)
+        cards.pack(fill="x", pady=(14, 0))
         for col in range(3):
             cards.columnconfigure(col, weight=1, uniform="card")
-        self.headers: dict[str, tk.Label] = {}
+        self.tags: dict[str, ui.Tag] = {}
+        self.chips: dict[str, ui.ColorChips] = {}
         self.previews: dict[str, dict[str, tk.Label]] = {}
         for i, name in enumerate(ALGORITHMS):
-            card = self.card(cards)
-            card.grid(row=i // 3, column=i % 3, sticky="nsew", padx=5, pady=5)
-            head = tk.Label(card, text=name, bg=app.colors[name], fg="white",
-                            font=self.fonts.chip, anchor="w", padx=12, pady=4)
+            card = ui.Card(cards)
+            card.grid(row=i // 3, column=i % 3, sticky="nsew", padx=6, pady=6)
+            body = card.body
+            head = tk.Frame(body, bg=ui.CARD)
             head.pack(fill="x")
-            self.headers[name] = head
-            body = tk.Frame(card, bg=COLOR_CARD, padx=12, pady=8)
-            body.pack(fill="x")
-            tk.Checkbutton(body, text="Runs in this race", variable=app.selected[name],
-                           command=self.on_toggle, bg=COLOR_CARD, activebackground=COLOR_CARD,
-                           font=self.fonts.bold, anchor="w", takefocus=0).pack(fill="x")
+            tag = ui.Tag(head, name, app.colors[name], self.fonts.chip)
+            tag.pack(side="left")
+            self.tags[name] = tag
+            ui.Switch(head, app.selected[name], command=self.on_toggle).pack(side="right")
             tk.Label(body, text=TAGLINES[name][0].upper() + TAGLINES[name][1:] + ".",
-                     bg=COLOR_CARD, fg=COLOR_MUTED, font=self.fonts.small,
-                     anchor="w").pack(fill="x")
-            tk.Label(body, text="Colour", bg=COLOR_CARD, fg=COLOR_TEXT, font=self.fonts.small,
-                     anchor="w").pack(fill="x", pady=(8, 2))
-            chips = tk.Frame(body, bg=COLOR_CARD)
-            chips.pack(fill="x")
-            for color in PALETTE:
-                chip = tk.Label(chips, bg=color, width=2, cursor="hand2")
-                chip.pack(side="left", padx=(0, 3))
-                chip.bind("<Button-1>", lambda _e, n=name, c=color: self.set_color(n, c))
-            tk.Button(chips, text="more…", command=lambda n=name: self.choose_color(n),
-                      font=self.fonts.small, relief="flat", bg=COLOR_CARD, fg=COLOR_ACCENT,
-                      activebackground=COLOR_CARD, cursor="hand2", takefocus=0,
-                      padx=4, pady=0).pack(side="left", padx=(6, 0))
-            preview = tk.Frame(body, bg=COLOR_CARD)
-            preview.pack(fill="x", pady=(8, 0))
+                     bg=ui.CARD, fg=ui.MUTED, font=self.fonts.small, anchor="w",
+                     wraplength=320).pack(fill="x", pady=(10, 0))
+            ui.eyebrow(body, "Colour", self.fonts.eyebrow).pack(fill="x", pady=(14, 4))
+            chips = ui.ColorChips(body, PALETTE, app.colors[name],
+                                  on_pick=lambda c, n=name: self.set_color(n, c),
+                                  on_more=lambda n=name: self.choose_color(n),
+                                  font=self.fonts.bold)
+            chips.pack(anchor="w")
+            self.chips[name] = chips
+            preview = tk.Frame(body, bg=ui.CARD)
+            preview.pack(fill="x", pady=(12, 0))
             swatches: dict[str, tk.Label] = {}
-            for key, caption in (("frontier", "found"), ("explored", "checked"), ("path", "path")):
-                swatch = tk.Label(preview, width=3, bg=COLOR_PATH if key == "path" else COLOR_CARD)
+            for key, caption in (("frontier", "found"), ("explored", "checked"),
+                                 ("path", "path")):
+                swatch = tk.Label(preview, width=3, bg=COLOR_PATH if key == "path" else ui.CARD)
                 swatch.pack(side="left")
-                tk.Label(preview, text=caption, bg=COLOR_CARD, fg=COLOR_MUTED,
-                         font=self.fonts.small).pack(side="left", padx=(4, 12))
+                tk.Label(preview, text=caption, bg=ui.CARD, fg=ui.MUTED,
+                         font=self.fonts.small).pack(side="left", padx=(6, 14))
                 swatches[key] = swatch
             self.previews[name] = swatches
+            card.fit()
 
-        below = ttk.Frame(self)
-        below.pack(fill="x", pady=(10, 0))
-        tk.Label(below, text="Quick picks", bg=COLOR_BG, fg=COLOR_TEXT,
-                 font=self.fonts.bold).pack(side="left", padx=(0, 8))
+        below = tk.Frame(self, bg=ui.BG)
+        below.pack(fill="x", pady=(16, 0))
+        tk.Label(below, text="Quick picks", bg=ui.BG, fg=ui.TEXT,
+                 font=self.fonts.bold).pack(side="left", padx=(0, 10))
         for label, names in QUICK_PICKS:
-            ttk.Button(below, text=label, command=lambda n=names: self.pick(n),
-                       takefocus=False).pack(side="left", padx=2)
-        ttk.Button(below, text="Default colours", command=self.default_colors,
-                   takefocus=False).pack(side="right")
+            self.button(below, label, lambda n=names: self.pick(n)).pack(side="left", padx=3)
+        self.button(below, "Default colours", self.default_colors,
+                    kind="ghost").pack(side="right")
 
-        guess = ttk.Frame(self)
-        guess.pack(fill="x", pady=(12, 0))
-        tk.Label(guess, text="Guess to the goal", bg=COLOR_BG, fg=COLOR_TEXT,
+        guess = tk.Frame(self, bg=ui.BG)
+        guess.pack(fill="x", pady=(16, 0))
+        tk.Label(guess, text="Guess to the goal", bg=ui.BG, fg=ui.TEXT,
                  font=self.fonts.bold).pack(side="left")
-        self.heuristic_box = ttk.Combobox(guess, state="readonly", font=self.fonts.body,
-                                          takefocus=False, width=11, values=list(HEURISTICS),
-                                          textvariable=app.heuristic)
-        self.heuristic_box.pack(side="left", padx=(8, 10))
-        self.heuristic_box.bind("<<ComboboxSelected>>", self.on_heuristic)
+        ui.Segmented(guess, [(h, h) for h in HEURISTICS], app.heuristic,
+                     command=self.on_heuristic, font=self.fonts.body).pack(side="left",
+                                                                           padx=(12, 14))
         tk.Label(guess, text="used by A*, Greedy and Hill Climbing. Manhattan is the exact "
                              "distance when no wall is in the way, Euclidean the straight line, "
                              "Chebyshev the larger of rows and columns.",
-                 bg=COLOR_BG, fg=COLOR_MUTED, font=self.fonts.small, anchor="w",
-                 justify="left").pack(side="left")
+                 bg=ui.BG, fg=ui.MUTED, font=self.fonts.small, anchor="w",
+                 justify="left", wraplength=620).pack(side="left")
 
-        self.summary = tk.Label(self, bg=COLOR_BG, fg=COLOR_TEXT, font=self.fonts.bold,
+        self.summary = tk.Label(self, bg=ui.BG, fg=ui.TEXT, font=self.fonts.bold,
                                 anchor="w", justify="left")
-        self.summary.pack(fill="x", pady=(12, 0))
+        self.summary.pack(fill="x", pady=(16, 0))
 
     def refresh(self) -> None:
         for name in ALGORITHMS:
@@ -696,9 +788,10 @@ class RunnersScreen(Screen):
 
     def update_colors(self, name: str) -> None:
         color = self.app.colors[name]
-        self.headers[name].config(bg=color)
-        self.previews[name]["frontier"].config(bg=blend(color, "#ffffff", 0.22))
-        self.previews[name]["explored"].config(bg=blend(color, "#ffffff", 0.68))
+        self.tags[name].set_color(color)
+        self.chips[name].set_current(color)
+        self.previews[name]["frontier"].config(bg=frontier_shade(color))
+        self.previews[name]["explored"].config(bg=explored_shade(color))
 
     def set_color(self, name: str, color: str) -> None:
         self.app.colors[name] = color
@@ -736,7 +829,7 @@ class RunnersScreen(Screen):
     def update_summary(self) -> None:
         names = self.app.chosen()
         if not names:
-            text = "Tick at least one runner."
+            text = "Switch on at least one runner."
         else:
             text = (f"{plural(len(names), 'runner')} in the race: {', '.join(names)}.   "
                     f"Guess to the goal: {self.app.heuristic.get()}.")
@@ -751,59 +844,66 @@ class RunnersScreen(Screen):
 
 
 class SpeedScreen(Screen):
-    """Step 3: four speed presets, a fine slider, the countdown and Big text."""
+    """Step 3: four speed presets as cards, a fine slider, the countdown and Big text."""
 
     def __init__(self, master: tk.Misc, app: App):
         super().__init__(master, app)
-        self.nav(back=("‹  Back: the runners", lambda: app.show("runners")),
-                 forward=("Start the race  ▶", app.start_race), accent=True)
+        self.nav(back=("←  Back: the runners", lambda: app.show("runners")),
+                 forward=("Start the race  ▶", app.start_race))
         self.heading(self, "Set the speed",
                      "Every runner makes the same number of moves per tick, and a move is one "
                      "look at one cell. Pick how many.")
         self.preset = tk.IntVar(value=app.speed.get())
-        cards = ttk.Frame(self)
-        cards.pack(fill="x", pady=(8, 0))
+        cards = tk.Frame(self, bg=ui.BG)
+        cards.pack(fill="x", pady=(14, 0))
         for col in range(len(SPEED_PRESETS)):
             cards.columnconfigure(col, weight=1, uniform="speed")
+        self.cards: dict[int, tuple[ui.Card, tk.Canvas]] = {}
         for i, (label, value, desc) in enumerate(SPEED_PRESETS):
-            card = self.card(cards, padx=12, pady=10)
-            card.grid(row=0, column=i, sticky="nsew", padx=5, pady=5)
-            tk.Radiobutton(card, text=label, variable=self.preset, value=value,
-                           command=lambda v=value: self.choose(v), bg=COLOR_CARD,
-                           activebackground=COLOR_CARD, font=self.fonts.title, anchor="w",
-                           takefocus=0).pack(fill="x")
-            tk.Label(card, text=f"{plural(value, 'move')} per tick   ·   "
+            card = ui.Card(cards, padx=18, pady=16)
+            card.grid(row=0, column=i, sticky="nsew", padx=6, pady=6)
+            body = card.body
+            head = tk.Frame(body, bg=ui.CARD)
+            head.pack(fill="x")
+            tk.Label(head, text=label, bg=ui.CARD, fg=ui.TEXT, font=self.fonts.title,
+                     anchor="w").pack(side="left")
+            dot = tk.Canvas(head, width=20, height=20, bg=ui.CARD, highlightthickness=0)
+            dot.pack(side="right")
+            tk.Label(body, text=str(value), bg=ui.CARD, fg=ui.TEXT, font=self.fonts.number,
+                     anchor="w").pack(fill="x", pady=(8, 0))
+            tk.Label(body, text=f"{plural(value, 'move')} per tick   ·   "
                                 f"about {value * 1000 // TICK_MS} a second",
-                     bg=COLOR_CARD, fg=COLOR_TEXT, font=self.fonts.body,
-                     anchor="w").pack(fill="x")
-            tk.Label(card, text=desc, bg=COLOR_CARD, fg=COLOR_MUTED, font=self.fonts.small,
-                     anchor="w", justify="left", wraplength=280).pack(fill="x", pady=(4, 0))
+                     bg=ui.CARD, fg=ui.MUTED, font=self.fonts.small, anchor="w").pack(fill="x")
+            tk.Label(body, text=desc, bg=ui.CARD, fg=ui.MUTED, font=self.fonts.small,
+                     anchor="w", justify="left", wraplength=250).pack(fill="x", pady=(10, 0))
+            card.fit()
+            for widget in ui.descendants(card):
+                widget.bind("<Button-1>", lambda _e, v=value: self.choose(v))
+                widget.configure(cursor="hand2")
+            self.cards[value] = (card, dot)
 
-        fine = ttk.Frame(self)
-        fine.pack(fill="x", pady=(16, 0))
-        tk.Label(fine, text="Fine tune", bg=COLOR_BG, fg=COLOR_TEXT,
-                 font=self.fonts.bold, anchor="w").pack(fill="x")
-        tk.Scale(fine, from_=1, to=60, orient="horizontal", variable=app.speed,
-                 showvalue=False, command=self.on_scale, bg=COLOR_BG, highlightthickness=0,
-                 takefocus=0, troughcolor=COLOR_TROUGH, sliderlength=18, bd=1,
-                 length=520).pack(anchor="w")
-        self.readout = tk.Label(fine, bg=COLOR_BG, fg=COLOR_TEXT, font=self.fonts.body,
-                                anchor="w")
-        self.readout.pack(fill="x")
+        fine = tk.Frame(self, bg=ui.BG)
+        fine.pack(fill="x", pady=(20, 0))
+        self.eyebrow(fine, "Fine tune", pady=(0, 6))
+        row = tk.Frame(fine, bg=ui.BG)
+        row.pack(fill="x")
+        ui.Slider(row, app.speed, 1, 60, command=self.on_scale, length=520).pack(side="left")
+        self.readout = tk.Label(row, bg=ui.BG, fg=ui.TEXT, font=self.fonts.body, anchor="w")
+        self.readout.pack(side="left", padx=(16, 0))
 
-        options = ttk.Frame(self)
-        options.pack(fill="x", pady=(18, 0))
-        tk.Label(options, text="Before the race", bg=COLOR_BG, fg=COLOR_TEXT,
-                 font=self.fonts.bold, anchor="w").pack(fill="x")
-        ttk.Checkbutton(options, text="Count down from 3 before the runners set off",
-                        variable=app.countdown, takefocus=False).pack(anchor="w", pady=(4, 0))
-        ttk.Checkbutton(options, text="Big text, for a projector", variable=app.big_text,
-                        command=app.toggle_big_text, takefocus=False).pack(anchor="w",
-                                                                           pady=(4, 0))
+        options = tk.Frame(self, bg=ui.BG)
+        options.pack(fill="x", pady=(22, 0))
+        self.eyebrow(options, "Before the race", pady=(0, 8))
+        ui.SwitchRow(options, "Count down from 3 before the runners set off", app.countdown,
+                     font=self.fonts.body).pack(fill="x")
+        ui.SwitchRow(options, "Big text, for a projector", app.big_text,
+                     command=app.toggle_big_text, font=self.fonts.body,
+                     sub="Every label and number grows by a third.",
+                     sub_font=self.fonts.small).pack(fill="x", pady=(10, 0))
         tk.Label(self, text="The speed can also be changed while the race runs, with the "
                             "slider on the race screen.",
-                 bg=COLOR_BG, fg=COLOR_MUTED, font=self.fonts.small,
-                 anchor="w").pack(fill="x", pady=(18, 0))
+                 bg=ui.BG, fg=ui.FAINT, font=self.fonts.small,
+                 anchor="w").pack(fill="x", pady=(22, 0))
 
     def refresh(self) -> None:
         self.sync()
@@ -817,7 +917,15 @@ class SpeedScreen(Screen):
 
     def sync(self) -> None:
         value = self.app.speed.get()
-        self.preset.set(value if value in {p[1] for p in SPEED_PRESETS} else 0)
+        self.preset.set(value if value in self.cards else 0)
+        for preset, (card, dot) in self.cards.items():
+            chosen = preset == value
+            card.set_outline(ui.ACCENT if chosen else ui.BORDER, 2 if chosen else 1)
+            dot.delete("all")
+            dot.create_oval(2, 2, 18, 18, outline=ui.ACCENT if chosen else ui.BORDER_STRONG,
+                            width=1.5)
+            if chosen:
+                dot.create_oval(6, 6, 14, 14, fill=ui.ACCENT, outline="")
         self.readout.config(text=f"{plural(value, 'move')} per tick, "
                                  f"about {value * 1000 // TICK_MS} moves a second.")
 
@@ -828,52 +936,51 @@ class RaceScreen(Screen):
 
     def __init__(self, master: tk.Misc, app: App):
         super().__init__(master, app)
-        top = ttk.Frame(self)
+        top = tk.Frame(self, bg=ui.BG)
         top.pack(fill="x")
-        self.title_label = tk.Label(top, font=self.fonts.title, bg=COLOR_BG, fg=COLOR_TEXT,
+        self.title_label = tk.Label(top, font=self.fonts.title, bg=ui.BG, fg=ui.TEXT,
                                     anchor="w")
         self.title_label.pack(side="left")
-        controls = ttk.Frame(top)
+        controls = tk.Frame(top, bg=ui.BG)
         controls.pack(side="right")
-        self.run_button = ttk.Button(controls, text="❙❙  Pause", style="Accent.TButton",
-                                     command=app.toggle_run, takefocus=False, width=11)
-        self.run_button.pack(side="left", padx=2)
-        ttk.Button(controls, text="Step", command=app.step_once,
-                   takefocus=False).pack(side="left", padx=2)
-        ttk.Button(controls, text="Finish", command=app.finish_now,
-                   takefocus=False).pack(side="left", padx=2)
-        ttk.Button(controls, text="Race again", command=app.race_again,
-                   takefocus=False).pack(side="left", padx=2)
-        ttk.Button(controls, text="Set up again", command=lambda: app.show("maze"),
-                   takefocus=False).pack(side="left", padx=(2, 16))
-        tk.Label(controls, text="Speed", bg=COLOR_BG, fg=COLOR_TEXT,
+        self.run_button = self.button(controls, "❙❙  Pause", app.toggle_run, kind="primary",
+                                      min_width=130)
+        self.run_button.pack(side="left", padx=3)
+        self.button(controls, "Step", app.step_once).pack(side="left", padx=3)
+        self.button(controls, "Finish", app.finish_now).pack(side="left", padx=3)
+        self.button(controls, "Race again", app.race_again).pack(side="left", padx=3)
+        self.button(controls, "Set up again", lambda: app.show("maze"),
+                    kind="ghost").pack(side="left", padx=(3, 18))
+        tk.Label(controls, text="Speed", bg=ui.BG, fg=ui.MUTED,
                  font=self.fonts.body).pack(side="left")
-        tk.Scale(controls, from_=1, to=60, orient="horizontal", variable=app.speed,
-                 showvalue=False, bg=COLOR_BG, highlightthickness=0, takefocus=0,
-                 troughcolor=COLOR_TROUGH, sliderlength=16, bd=1,
-                 length=150).pack(side="left", padx=(6, 0))
+        ui.Slider(controls, app.speed, 1, 60, length=170).pack(side="left", padx=(8, 0))
 
-        bottom = ttk.Frame(self)
-        bottom.pack(side="bottom", fill="x", pady=(6, 0))
+        bottom = tk.Frame(self, bg=ui.BG)
+        bottom.pack(side="bottom", fill="x", pady=(8, 0))
         self.banner = tk.Label(bottom, textvariable=app.status_var, font=self.fonts.bold,
-                               bg=COLOR_BG, fg=COLOR_TEXT, anchor="w")
+                               bg=ui.BG, fg=ui.TEXT, anchor="w")
         self.banner.pack(side="left", fill="x", expand=True)
-        self.results_button = ttk.Button(bottom, text="See the results  ›",
-                                         style="Accent.TButton", takefocus=False,
-                                         command=lambda: app.show("results"))
-        legend = ttk.Frame(self)
-        legend.pack(side="bottom", fill="x", pady=(6, 0))
+        self.results_button = self.button(bottom, "See the results  →",
+                                          lambda: app.show("results"), kind="primary",
+                                          padx=22, pady=9)
+        legend = tk.Frame(self, bg=ui.BG)
+        legend.pack(side="bottom", fill="x", pady=(10, 0))
         for text, color in (("Start", COLOR_START), ("Goal", COLOR_GOAL),
                             ("Wall", COLOR_WALL), ("Final path", COLOR_PATH)):
-            tk.Label(legend, bg=color, width=2).pack(side="left", padx=(0, 4))
-            tk.Label(legend, text=text, bg=COLOR_BG, fg=COLOR_TEXT,
+            swatch = tk.Canvas(legend, width=12, height=12, bg=ui.BG, highlightthickness=0)
+            swatch.create_oval(1, 1, 11, 11, fill=color,
+                               outline=ui.BORDER_STRONG if color == COLOR_WALL else "")
+            swatch.pack(side="left", padx=(0, 6))
+            tk.Label(legend, text=text, bg=ui.BG, fg=ui.MUTED,
                      font=self.fonts.small).pack(side="left", padx=(0, 16))
-        tk.Label(legend, text="Strong shade of a runner's colour: found, not checked yet.   "
-                              "Light shade: checked.",
-                 bg=COLOR_BG, fg=COLOR_MUTED, font=self.fonts.small).pack(side="left")
+        tk.Label(legend, text="A runner's full colour: found, not checked yet.   "
+                              "Dimmer: checked.",
+                 bg=ui.BG, fg=ui.FAINT, font=self.fonts.small).pack(side="left")
 
-        self.panel_area = ttk.Frame(self)
-        self.panel_area.pack(fill="both", expand=True, pady=(8, 0))
+        self.panel_area = tk.Frame(self, bg=ui.BG)
+        self.panel_area.pack(fill="both", expand=True, pady=(10, 0))
+        self.panel_grid = tk.Frame(self.panel_area, bg=ui.BG)   # centred in the area
+        self.panel_grid.pack(expand=True)
         self.panels: list[Panel] = []
         self.panel_by_name: dict[str, Panel] = {}
         self._size = (0, 0)
@@ -899,22 +1006,24 @@ class RaceScreen(Screen):
         root.update_idletasks()
         w, h = self.panel_area.winfo_width(), self.panel_area.winfo_height()
         if w < 200 or h < 150:                       # not laid out yet: estimate
-            w, h = root.winfo_width() - 40, root.winfo_height() - 230
+            w, h = root.winfo_width() - Sidebar.RAIL - 50, root.winfo_height() - 230
         line = self.fonts.body.metrics("linespace")
-        chip = self.fonts.chip.metrics("linespace")
+        tag = self.fonts.chip.metrics("linespace") + 6          # the name pill
+        pad_w = 2 * ui.Card.INSET + 2 * Panel.PADX + 8          # card edges and grid padding
+        pad_h = 2 * ui.Card.INSET + 2 * Panel.PADY + 8
         grid = self.app.grid
         best = None
         for columns in (1, 2, 3):
             rows = max(1, math.ceil(count / columns))
 
             def fits(header: int) -> int:
-                return min(18, (w - columns * 12) // (columns * grid.cols),
-                           (h - rows * (header + 12)) // (rows * grid.rows))
+                return min(18, (w - columns * pad_w) // (columns * grid.cols),
+                           (h - rows * (header + pad_h)) // (rows * grid.rows))
 
-            cell = fits(chip + line + 14)            # name + tagline, counters below
+            cell = fits(tag + line + 10)             # name + tagline, counters below
             compact = cell < 11
             if compact:
-                cell = fits(chip + 12)               # name and counters on one line
+                cell = fits(tag + 6)                 # name and counters on one line
             # Biggest cells win; then the fewest empty slots; then the wider layout.
             key = (cell, count - rows * columns, columns)
             if best is None or key > best[0]:
@@ -923,7 +1032,7 @@ class RaceScreen(Screen):
 
     def build_panels(self) -> None:
         self.cancel_countdown()
-        for widget in self.panel_area.winfo_children():
+        for widget in self.panel_grid.winfo_children():
             widget.destroy()
         self.panels = []
         self.panel_by_name = {}
@@ -931,12 +1040,10 @@ class RaceScreen(Screen):
         if race is None:
             return
         columns, cell, compact = self.layout(len(race.runners))
-        for col in range(3):
-            self.panel_area.columnconfigure(col, weight=1 if col < columns else 0)
         for i, runner in enumerate(race.runners):
-            panel = Panel(self.panel_area, self.app.grid, runner.name, runner.color, cell,
+            panel = Panel(self.panel_grid, self.app.grid, runner.name, runner.color, cell,
                           self.fonts, compact)
-            panel.grid(row=i // columns, column=i % columns, padx=5, pady=5, sticky="n")
+            panel.grid(row=i // columns, column=i % columns, padx=4, pady=4, sticky="n")
             panel.render(runner)
             self.panels.append(panel)
             self.panel_by_name[runner.name] = panel
@@ -977,7 +1084,7 @@ class RaceScreen(Screen):
         """Show 3, 2, 1, Go! over the panels, then call ``then``."""
         self.cancel_countdown()
         self._overlay = tk.Label(self.panel_area, text="3", font=self.fonts.huge,
-                                 bg=COLOR_BG, fg=COLOR_TEXT, padx=40, pady=10)
+                                 bg=ui.BG, fg=ui.TEXT, padx=40, pady=10)
         self._overlay.place(relx=0.5, rely=0.5, anchor="center")
         self._count_step(["2", "1", "Go!"], then)
 
@@ -1005,77 +1112,90 @@ class RaceScreen(Screen):
 class ResultsScreen(Screen):
     """Step 5: the winner, the awards, the full table and a chart."""
 
-    COLUMNS = (
+    COLUMNS = (   # id, heading, width, anchor; the headings are shown in capitals
         ("place", "Place", 60, "center"),
         ("algorithm", "Runner", 120, "w"),
         ("result", "Result", 170, "w"),
-        ("moves", "Moves to finish", 110, "e"),
-        ("explored", "Cells checked", 100, "e"),
-        ("path", "Path length", 90, "e"),
-        ("optimal", "Shortest path?", 110, "center"),
-        ("started", "Started at", 100, "center"),
-        ("finished", "Finished at", 100, "center"),
-        ("race_time", "Time taken", 90, "e"),
-        ("cpu", "Compute time", 100, "e"),
+        ("moves", "Moves", 85, "e"),
+        ("explored", "Cells checked", 115, "e"),
+        ("path", "Path length", 100, "e"),
+        ("optimal", "Shortest?", 95, "center"),
+        ("started", "Started at", 105, "center"),
+        ("finished", "Finished at", 105, "center"),
+        ("race_time", "Time taken", 100, "e"),
+        ("cpu", "Compute", 95, "e"),
     )
     AWARDS = ("Shortest path", "Fewest cells checked", "Quickest to compute", "Did not finish")
 
     def __init__(self, master: tk.Misc, app: App):
         super().__init__(master, app)
-        bar = ttk.Frame(self)
-        bar.pack(side="bottom", fill="x", pady=(10, 0))
-        ttk.Button(bar, text="‹  Back to the race", command=lambda: app.show("race"),
-                   takefocus=False).pack(side="left")
-        ttk.Button(bar, text="Race again  ↻", style="Accent.TButton", command=app.race_again,
-                   takefocus=False).pack(side="right", padx=(8, 0))
-        for label, screen in (("Change the speed", "speed"), ("Change the runners", "runners"),
-                              ("Change the maze", "maze")):
-            ttk.Button(bar, text=label, command=lambda s=screen: app.show(s),
-                       takefocus=False).pack(side="right", padx=2)
+        self.nav(back=("←  Back to the race", lambda: app.show("race")),
+                 forward=("Race again  ↻", app.race_again),
+                 extra=(("Change the speed", lambda: app.show("speed")),
+                        ("Change the runners", lambda: app.show("runners")),
+                        ("Change the maze", lambda: app.show("maze"))))
 
-        head = ttk.Frame(self)
+        head = tk.Frame(self, bg=ui.BG)
         head.pack(fill="x")
-        tk.Label(head, text="Race results", font=self.fonts.title, bg=COLOR_BG,
-                 fg=COLOR_TEXT, anchor="w").pack(side="left")
-        self.subtitle = tk.Label(head, font=self.fonts.body, bg=COLOR_BG, fg=COLOR_MUTED,
-                                 anchor="e")
-        self.subtitle.pack(side="right")
+        tk.Label(head, text="Race results", font=self.fonts.display, bg=ui.BG,
+                 fg=ui.TEXT, anchor="w").pack(side="left")
+        self.subtitle = tk.Label(head, font=self.fonts.body, bg=ui.BG, fg=ui.MUTED, anchor="e")
+        self.subtitle.pack(side="right", anchor="s", pady=(0, 6))
 
-        self.winner = tk.Label(self, font=self.fonts.big, fg="white", bg=COLOR_TEXT,
-                               anchor="w", padx=16, pady=8)
-        self.winner.pack(fill="x", pady=(8, 0))
-        self.winner_sub = tk.Label(self, font=self.fonts.body, fg=COLOR_TEXT, bg=COLOR_CARD,
-                                   anchor="w", padx=16, pady=6)
-        self.winner_sub.pack(fill="x")
+        # One row of cards: the winner, two columns wide, then the four awards.
+        top = tk.Frame(self, bg=ui.BG)
+        top.pack(fill="x", pady=(12, 0))
+        for col in range(6):
+            top.columnconfigure(col, weight=1, uniform="top")
+        self.winner_card = ui.Card(top, padx=20, pady=12)
+        self.winner_card.grid(row=0, column=0, columnspan=2, sticky="nsew", padx=(0, 6))
+        body = self.winner_card.body
+        head = tk.Frame(body, bg=ui.CARD)
+        head.pack(fill="x")
+        left = tk.Frame(head, bg=ui.CARD)
+        left.pack(side="left", fill="x", expand=True)
+        ui.eyebrow(left, "Winner", self.fonts.eyebrow).pack(anchor="w")
+        self.winner = tk.Label(left, font=self.fonts.h1, bg=ui.CARD, fg=ui.TEXT, anchor="w")
+        self.winner.pack(fill="x")
+        right = tk.Frame(head, bg=ui.CARD)
+        right.pack(side="right", anchor="n", padx=(16, 0))
+        self.winner_moves = tk.Label(right, font=self.fonts.number, bg=ui.CARD, fg=ui.TEXT,
+                                     anchor="e")
+        self.winner_moves.pack(fill="x")
+        self.winner_moves_caption = tk.Label(right, text="moves to the goal",
+                                             font=self.fonts.small, bg=ui.CARD, fg=ui.MUTED,
+                                             anchor="e")
+        self.winner_moves_caption.pack(fill="x")
+        self.winner_sub = tk.Label(body, font=self.fonts.body, fg=ui.MUTED, bg=ui.CARD,
+                                   anchor="w", justify="left", wraplength=340)
+        self.winner_sub.pack(fill="x", pady=(6, 0))
 
-        awards = ttk.Frame(self)
-        awards.pack(fill="x", pady=(10, 0))
-        self.awards: list[tuple[tk.Label, tk.Label]] = []
+        self.awards: list[tuple[ui.Card, tk.Label, tk.Label]] = []
         for i, title in enumerate(self.AWARDS):
-            awards.columnconfigure(i, weight=1, uniform="award")
-            card = self.card(awards, padx=12, pady=8)
-            card.grid(row=0, column=i, sticky="nsew", padx=5)
-            tk.Label(card, text=title, bg=COLOR_CARD, fg=COLOR_MUTED, font=self.fonts.small,
-                     anchor="w").pack(fill="x")
-            who = tk.Label(card, bg=COLOR_CARD, fg=COLOR_TEXT, font=self.fonts.title,
-                           anchor="w", justify="left", wraplength=320)
-            who.pack(fill="x")
-            detail = tk.Label(card, bg=COLOR_CARD, fg=COLOR_TEXT, font=self.fonts.body,
-                              anchor="w", justify="left", wraplength=320)
+            card = ui.Card(top, padx=16, pady=10)
+            card.grid(row=0, column=2 + i, sticky="nsew",
+                      padx=(6, 0) if i == len(self.AWARDS) - 1 else 6)
+            ui.eyebrow(card.body, title, self.fonts.eyebrow).pack(fill="x")
+            who = tk.Label(card.body, bg=ui.CARD, fg=ui.TEXT, font=self.fonts.title,
+                           anchor="w", justify="left", wraplength=170)
+            who.pack(fill="x", pady=(2, 0))
+            detail = tk.Label(card.body, bg=ui.CARD, fg=ui.MUTED, font=self.fonts.body,
+                              anchor="w", justify="left", wraplength=170)
             detail.pack(fill="x")
-            self.awards.append((who, detail))
+            self.awards.append((card, who, detail))
 
+        self.table_card = ui.Card(self, padx=2, pady=2)
+        self.table_card.pack(fill="x", pady=(12, 0))
         ids = [c[0] for c in self.COLUMNS]
-        self.board = ttk.Treeview(self, columns=ids, show="headings",
+        self.board = ttk.Treeview(self.table_card.body, columns=ids, show="headings",
                                   height=len(ALGORITHMS), selectmode="none")
         for cid, heading, width, anchor in self.COLUMNS:
-            self.board.heading(cid, text=heading)
+            self.board.heading(cid, text=heading.upper())
             self.board.column(cid, width=width, anchor=anchor, stretch=(cid == "result"))
-        self.board.pack(fill="x", pady=(12, 0))
+        self.board.pack(fill="both", expand=True)
 
-        tk.Label(self, text="Cells checked, in finishing order", bg=COLOR_BG, fg=COLOR_TEXT,
-                 font=self.fonts.bold, anchor="w").pack(fill="x", pady=(12, 2))
-        self.chart = tk.Canvas(self, bg=COLOR_BG, highlightthickness=0, height=120)
+        self.eyebrow(self, "Cells checked, in finishing order", pady=(12, 2))
+        self.chart = tk.Canvas(self, bg=ui.BG, highlightthickness=0, height=120)
         self.chart.pack(fill="x")
 
     def refresh(self) -> None:
@@ -1087,65 +1207,84 @@ class ResultsScreen(Screen):
         self.subtitle.config(
             text=f"{app.maze_name}   ·   {app.heuristic.get()} guess   ·   "
                  f"speed {app.speed.get()}   ·   started {fmt_clock(race.started_at)}")
+        self.fit_text_to_cards()
         self.show_winner(res, race)
         self.show_awards(res, race)
         self.fill_table(res, race)
         self.draw_chart(res)
 
+    def fit_text_to_cards(self) -> None:
+        """Wrap the card texts to the width the cards actually have, which depends
+        on the window and on the font size."""
+        self.app.root.update_idletasks()
+        inset = 2 * ui.Card.INSET
+        width = self.winner_card.winfo_width() - inset - 40
+        self.winner_sub.config(wraplength=max(160, width))
+        for card, who, detail in self.awards:
+            width = card.winfo_width() - inset - 32
+            who.config(wraplength=max(80, width))
+            detail.config(wraplength=max(80, width))
+
     def show_winner(self, res: Results, race: Race) -> None:
         if not res.winners:
-            self.winner.config(text="No winner", bg=COLOR_TEXT)
+            self.winner.config(text="No winner", fg=ui.TEXT)
             self.winner_sub.config(text="Nobody reached the goal.")
+            self.winner_moves.config(text="–")
+            self.winner_card.fit(width=False)
             return
         names = " and ".join(r.name for r in res.winners)
         first = res.winners[0]
-        self.winner.config(text=f"Winner: {names}",
-                           bg=first.color if len(res.winners) == 1 else COLOR_TEXT)
+        self.winner.config(text=names, fg=first.color if len(res.winners) == 1 else ui.TEXT)
         extra = first.path_length - (race.optimal_length or first.path_length)
-        path = (f"a path of {first.path_length} steps, the shortest there is." if extra == 0
-                else f"a path of {first.path_length} steps, {extra} longer than the shortest.")
+        path = (f"Path of {first.path_length} steps, the shortest there is." if extra == 0
+                else f"Path of {first.path_length} steps, {extra} longer than the shortest.")
         heat = "  A dead heat." if len(res.winners) > 1 else ""
-        self.winner_sub.config(
-            text=f"First to reach the goal, after {plural(res.winner_moves, 'move')}, "
-                 f"with {path}{heat}")
+        self.winner_sub.config(text=f"First to reach the goal.  {path}{heat}")
+        self.winner_moves.config(text=str(res.winner_moves))
+        self.winner_card.fit(width=False)
 
     def show_awards(self, res: Results, race: Race) -> None:
         (shortest, fewest, quickest, dnf) = self.awards
         if res.shortest:
-            shortest[0].config(text=", ".join(r.name for r in res.shortest))
-            shortest[1].config(text=f"{plural(race.optimal_length, 'step')} from start to goal")
+            shortest[1].config(text=", ".join(r.name for r in res.shortest))
+            shortest[2].config(text=f"{plural(race.optimal_length, 'step')} from start to goal")
         else:
-            shortest[0].config(text="Nobody")
-            shortest[1].config(text="")
+            shortest[1].config(text="Nobody")
+            shortest[2].config(text="")
         if res.fewest_checked is not None:
-            fewest[0].config(text=res.fewest_checked.name)
-            fewest[1].config(text=f"{plural(len(res.fewest_checked.explored), 'cell')} checked")
+            fewest[1].config(text=res.fewest_checked.name)
+            fewest[2].config(text=f"{plural(len(res.fewest_checked.explored), 'cell')} checked")
         else:
-            fewest[0].config(text="Nobody")
-            fewest[1].config(text="")
+            fewest[1].config(text="Nobody")
+            fewest[2].config(text="")
         if res.quickest_compute is not None:
-            quickest[0].config(text=res.quickest_compute.name)
-            quickest[1].config(text=f"{res.quickest_compute.compute_seconds * 1000:.2f} ms "
+            quickest[1].config(text=res.quickest_compute.name)
+            quickest[2].config(text=f"{res.quickest_compute.compute_seconds * 1000:.2f} ms "
                                     "inside the algorithm")
         else:
-            quickest[0].config(text="Nobody")
-            quickest[1].config(text="")
+            quickest[1].config(text="Nobody")
+            quickest[2].config(text="")
         if res.did_not_finish:
-            dnf[0].config(text=", ".join(r.name for r in res.did_not_finish))
-            dnf[1].config(text="stuck at a local minimum" if race.optimal_length is not None
+            dnf[1].config(text=", ".join(r.name for r in res.did_not_finish))
+            dnf[2].config(text="stuck at a local minimum" if race.optimal_length is not None
                           else "no path exists: the goal is sealed off")
         else:
-            dnf[0].config(text="Everyone finished")
-            dnf[1].config(text="")
+            dnf[1].config(text="Everyone finished")
+            dnf[2].config(text="")
+        for card, _who, _detail in self.awards:
+            card.fit(width=False)
 
     def fill_table(self, res: Results, race: Race) -> None:
         board = self.board
         board.delete(*board.get_children())
         board.configure(height=max(2, len(res.order)))
+        board.tag_configure("stripe", background=ui.RAISED)
         for place, runner in enumerate(res.order, 1):
             board.tag_configure(runner.name, foreground=runner.color)
-            board.insert("", "end", iid=runner.name, tags=(runner.name,),
+            tags = (runner.name, "stripe") if place % 2 == 0 else (runner.name,)
+            board.insert("", "end", iid=runner.name, tags=tags,
                          values=self.row(place, runner, race))
+        self.table_card.fit(width=False)
 
     @staticmethod
     def row(place: int, runner: Runner, race: Race) -> tuple:
@@ -1182,44 +1321,45 @@ class ResultsScreen(Screen):
         c.update_idletasks()
         width = c.winfo_width()
         if width < 300:
-            width = self.app.root.winfo_width() - 60
+            width = self.app.root.winfo_width() - Sidebar.WIDTH - 50
         runners = res.order
-        row_h = self.fonts.body.metrics("linespace") + 12
+        row_h = self.fonts.body.metrics("linespace") + 10
         c.config(height=row_h * len(runners) + 4)
         most = max((len(r.explored) for r in runners), default=1) or 1
-        left, right = 140, 300
+        left, right = 150, 320
         scale = (width - left - right) / most
         for i, runner in enumerate(runners):
             y = 2 + i * row_h
-            c.create_text(left - 12, y + row_h / 2, text=runner.name, anchor="e",
+            c.create_text(left - 14, y + row_h / 2, text=runner.name, anchor="e",
                           font=self.fonts.bold, fill=runner.color)
             n = len(runner.explored)
-            x1 = left + n * scale
-            c.create_rectangle(left, y + 4, x1, y + row_h - 4, fill=runner.color, outline="")
+            x1 = left + max(6, n * scale)
+            ui.rounded(c, left, y + 4, x1, y + row_h - 4, 5, fill=runner.color)
             label = f"{plural(n, 'cell')} checked" + (
                 f"   ·   path {runner.path_length} steps" if runner.found
                 else "   ·   did not finish")
-            c.create_text(x1 + 10, y + row_h / 2, text=label, anchor="w",
-                          font=self.fonts.body, fill=COLOR_TEXT)
+            c.create_text(x1 + 12, y + row_h / 2, text=label, anchor="w",
+                          font=self.fonts.body, fill=ui.MUTED)
 
 
 class App:
-    """The window: a step bar across the top and one screen showing at a time."""
+    """The window: the sidebar on the left and one screen showing at a time."""
 
     def __init__(self, root: tk.Tk):
         self.root = root
         root.title("Maze Pathfinding Visualizer")
-        root.configure(bg=COLOR_BG)
-        root.minsize(960, 620)
+        root.configure(bg=ui.BG)
+        root.minsize(1100, 680)
         self.fonts = Fonts()
         self.style = ttk.Style(root)
-        root.option_add("*TCombobox*Listbox.font", self.fonts.body)
         self._apply_style()
         try:
             root.state("zoomed")      # fill the screen first, so the screens can be sized to it
         except tk.TclError:
             pass
         root.update_idletasks()
+        if sys.platform == "win32":
+            self._keep_awake()
 
         # The settings the setup screens edit.
         index = [t.name for t in TEMPLATES].index(DEFAULT_TEMPLATE)
@@ -1245,17 +1385,11 @@ class App:
         self._relayout_id: str | None = None
         self.current = ""
 
-        header = tk.Frame(root, bg=COLOR_BG)
-        header.pack(fill="x", padx=16, pady=(10, 0))
-        tk.Label(header, text="Maze Pathfinding Visualizer", font=self.fonts.title,
-                 bg=COLOR_BG, fg=COLOR_TEXT).pack(side="left")
-        self.stepbar = StepBar(header, self)
-        self.stepbar.pack(side="left", padx=(36, 0))
-        ttk.Button(header, text="How it works  (F1)", command=self.show_help,
-                   takefocus=False).pack(side="right")
-
-        container = ttk.Frame(root, padding=(16, 10, 16, 12))
-        container.pack(fill="both", expand=True)
+        self.sidebar = Sidebar(root, self)
+        self.sidebar.pack(side="left", fill="y")
+        tk.Frame(root, bg=ui.BORDER, width=1).pack(side="left", fill="y")
+        container = tk.Frame(root, bg=ui.BG, padx=24, pady=20)
+        container.pack(side="left", fill="both", expand=True)
         container.rowconfigure(0, weight=1)
         container.columnconfigure(0, weight=1)
         self.screens: dict[str, Screen] = {
@@ -1279,40 +1413,64 @@ class App:
     # -- looks -------------------------------------------------------------------------
 
     def _apply_style(self) -> None:
+        """The few ttk widgets left (the table and the scrollbars) in the theme's colours."""
         s, f = self.style, self.fonts
-        s.configure("TFrame", background=COLOR_BG)
-        s.configure("TLabel", background=COLOR_BG, foreground=COLOR_TEXT, font=f.body)
-        s.configure("TCheckbutton", background=COLOR_BG, font=f.body)
-        s.configure("TButton", font=f.body)
-        s.configure("Accent.TButton", font=f.bold)
-        s.configure("TCombobox", font=f.body)
-        self.rowheight = f.body.metrics("linespace") + 6
-        s.configure("Treeview", font=f.body, rowheight=self.rowheight)
-        s.configure("Treeview.Heading", font=f.bold)
+        s.theme_use("clam")
+        s.configure(".", background=ui.BG, foreground=ui.TEXT, font=f.body,
+                    bordercolor=ui.BORDER, lightcolor=ui.BG, darkcolor=ui.BG,
+                    troughcolor=ui.CARD, focuscolor=ui.BG)
+        self.rowheight = f.body.metrics("linespace") + 8
+        s.configure("Treeview", background=ui.CARD, fieldbackground=ui.CARD,
+                    foreground=ui.TEXT, font=f.body, rowheight=self.rowheight,
+                    borderwidth=0, relief="flat")
+        s.layout("Treeview", [("Treeview.treearea", {"sticky": "nswe"})])
+        s.map("Treeview", background=[("selected", ui.SELECTED)],
+              foreground=[("selected", ui.TEXT)])
+        s.configure("Treeview.Heading", background=ui.RAISED, foreground=ui.MUTED,
+                    font=f.label, relief="flat", borderwidth=0, padding=(8, 7))
+        s.map("Treeview.Heading", background=[("active", ui.RAISED)],
+              relief=[("pressed", "flat")])
+        s.configure("Vertical.TScrollbar", background=ui.BORDER_STRONG, troughcolor=ui.CARD,
+                    bordercolor=ui.CARD, arrowcolor=ui.MUTED, lightcolor=ui.BORDER_STRONG,
+                    darkcolor=ui.BORDER_STRONG, arrowsize=12, relief="flat", gripcount=0)
+        s.map("Vertical.TScrollbar", background=[("active", ui.FAINT), ("pressed", ui.FAINT)])
+
+    def _keep_awake(self) -> None:
+        """Windows only. Tk's event loop can oversleep after another program asks
+        the window to paint itself (PrintWindow, which some screenshot tools use):
+        its timers then stay silent until the next window message arrives, and a
+        race in progress would freeze until the mouse moved. A helper thread posts
+        a no-op message to the window twice a second, so a message always comes."""
+        import ctypes
+        import threading
+
+        user32 = ctypes.windll.user32
+        user32.GetAncestor.restype = ctypes.c_void_p
+        user32.GetAncestor.argtypes = [ctypes.c_void_p, ctypes.c_uint]
+        user32.IsWindow.argtypes = [ctypes.c_void_p]
+        user32.PostMessageW.argtypes = [ctypes.c_void_p, ctypes.c_uint, ctypes.c_void_p,
+                                        ctypes.c_void_p]
+        hwnd = user32.GetAncestor(self.root.winfo_id(), 2)      # GA_ROOT: the frame window
+        if not hwnd:
+            return
+
+        def nudge() -> None:
+            while user32.IsWindow(hwnd):
+                time.sleep(0.5)
+                user32.PostMessageW(hwnd, 0, None, None)        # WM_NULL
+
+        threading.Thread(target=nudge, name="tk-keep-awake", daemon=True).start()
 
     def toggle_big_text(self) -> None:
         self.fonts.scale(1.35 if self.big_text.get() else 1.0)
+        ui.refit_all()
         self._apply_style()
         self.screens[self.current].refresh()
-
-    def slider(self, parent: tk.Misc, title: str, var: tk.IntVar, lo: int, hi: int,
-               left: str, right: str) -> None:
-        tk.Label(parent, text=title, bg=COLOR_BG, fg=COLOR_TEXT, font=self.fonts.body,
-                 anchor="w").pack(fill="x", pady=(8, 0))
-        tk.Scale(parent, from_=lo, to=hi, orient="horizontal", variable=var,
-                 showvalue=False, bg=COLOR_BG, highlightthickness=0, takefocus=0,
-                 troughcolor=COLOR_TROUGH, sliderlength=18, bd=1).pack(fill="x")
-        ends = tk.Frame(parent, bg=COLOR_BG)
-        ends.pack(fill="x")
-        tk.Label(ends, text=left, bg=COLOR_BG, fg=COLOR_MUTED,
-                 font=self.fonts.small).pack(side="left")
-        tk.Label(ends, text=right, bg=COLOR_BG, fg=COLOR_MUTED,
-                 font=self.fonts.small).pack(side="right")
 
     # -- moving between screens ---------------------------------------------------------
 
     def chosen(self) -> list[str]:
-        """The runners ticked on the Runners screen, in the fixed order."""
+        """The runners switched on on the Runners screen, in the fixed order."""
         return [name for name in ALGORITHMS if self.selected[name].get()]
 
     def show(self, name: str) -> None:
@@ -1324,9 +1482,10 @@ class App:
         if self.current == "race" and name != "race" and self.running:
             self.pause()
         self.current = name
+        self.sidebar.set_compact(name == "race")     # before the screen measures itself
         self.screens[name].refresh()
         self.screens[name].tkraise()
-        self.stepbar.set_current(name, self.race is not None and self.race.finished)
+        self.sidebar.set_current(name, self.race is not None and self.race.finished)
         self.root.focus_set()
 
     def set_maze(self, grid: Grid, name: str, note: str, index: int | None) -> None:
@@ -1345,7 +1504,7 @@ class App:
         self.status_var.set("")
         self.screens["race"].cancel_countdown()
         if self.current:
-            self.stepbar.set_current(self.current, False)
+            self.sidebar.set_current(self.current, False)
 
     def on_race_screen(self, action) -> None:
         if self.current == "race" and self.race is not None:
@@ -1363,12 +1522,13 @@ class App:
         self.race = Race(self.grid, [(name, self.colors[name]) for name in names],
                          HEURISTICS[self.heuristic.get()])
         race_screen = self.screens["race"]
-        race_screen.run_button.state(["!disabled"])
-        race_screen.run_button.config(text="▶  Start")
+        race_screen.run_button.set_state("normal")
+        race_screen.run_button.set_text("▶  Start")
         self.current = "race"
+        self.sidebar.set_compact(True)
         race_screen.refresh()
         race_screen.tkraise()
-        self.stepbar.set_current("race", False)
+        self.sidebar.set_current("race", False)
         self.root.focus_set()
         if self.countdown.get():
             self.status_var.set("Get ready…")
@@ -1395,7 +1555,7 @@ class App:
             self._ticks = 0
         race.resume()             # and runs again after a pause
         self.running = True
-        self.screens["race"].run_button.config(text="❙❙  Pause")
+        self.screens["race"].run_button.set_text("❙❙  Pause")
         self.status_var.set("Racing.   Space pauses, Right arrow steps, F finishes.")
         self._schedule()
 
@@ -1410,7 +1570,7 @@ class App:
         race.pause()              # paused time is not time taken
         self.refresh_stats()      # and the frozen numbers are shown exactly
         if not race.finished and race.started_at:
-            self.screens["race"].run_button.config(text="▶  Resume")
+            self.screens["race"].run_button.set_text("▶  Resume")
             self.status_var.set("Paused.   Right arrow steps one move at a time.")
 
     def _schedule(self) -> None:
@@ -1453,7 +1613,7 @@ class App:
             self._finish()
         else:
             self.refresh_stats()  # a step by hand shows its numbers at once
-            self.screens["race"].run_button.config(text="▶  Resume")
+            self.screens["race"].run_button.set_text("▶  Resume")
 
     def finish_now(self) -> None:
         race = self.race
@@ -1470,8 +1630,8 @@ class App:
         race = self.race
         assert race is not None
         race_screen = self.screens["race"]
-        race_screen.run_button.config(text="Finished")
-        race_screen.run_button.state(["disabled"])
+        race_screen.run_button.set_text("Finished")
+        race_screen.run_button.set_state("disabled")
         self.refresh_stats()      # always once, with the final numbers
         res = race.results()
         if res.winners:
@@ -1481,7 +1641,7 @@ class App:
         else:
             self.status_var.set("Finished.   Nobody reached the goal.")
         race_screen.show_finished(True)
-        self.stepbar.set_current(self.current, True)
+        self.sidebar.set_current(self.current, True)
 
     def refresh_stats(self) -> None:
         self.screens["race"].refresh_stats()
@@ -1508,13 +1668,14 @@ class App:
             return
         win = tk.Toplevel(self.root)
         win.title("How it works")
-        win.configure(bg=COLOR_BG)
+        win.configure(bg=ui.BG)
         self.help_window = win
-        frame = ttk.Frame(win, padding=10)
+        frame = tk.Frame(win, bg=ui.BG, padx=14, pady=14)
         frame.pack(fill="both", expand=True)
         text = tk.Text(frame, wrap="word", width=90, height=34, font=self.fonts.body,
-                       bg="white", fg=COLOR_TEXT, relief="flat", padx=20, pady=14,
-                       spacing2=2, spacing3=8)
+                       bg=ui.CARD, fg=ui.TEXT, relief="flat", bd=0, highlightthickness=0,
+                       padx=24, pady=18, spacing2=2, spacing3=8, insertbackground=ui.TEXT,
+                       selectbackground=ui.SELECTED, selectforeground=ui.TEXT)
         scroll = ttk.Scrollbar(frame, command=text.yview)
         text.configure(yscrollcommand=scroll.set)
         text.pack(side="left", fill="both", expand=True)
@@ -1525,7 +1686,7 @@ class App:
         for tag, chunk in HELP:
             text.insert("end", chunk, (tag,) if tag else ())
         text.configure(state="disabled")
-        ttk.Button(win, text="Close", command=win.destroy).pack(pady=(0, 10))
+        ui.Button(win, "Close", win.destroy, font=self.fonts.body).pack(pady=(0, 14))
 
 
 def main() -> None:
